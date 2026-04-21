@@ -113,8 +113,8 @@ aef-bng process --year 2025 \
 # Process specific bounds (Central London area) for a single year
 aef-bng process \
     --year 2025 \
-    --bounds 371416 382458 399037 405577 \
-    --output ./manc_aef
+    --bounds 521722 171089 540290 187123 \
+    --output ./london_aef
 
 # Process specific bounds for multiple years
 aef-bng process \
