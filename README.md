@@ -123,7 +123,6 @@ aef-bng process \
     --output ./london_aef
 ```
 
-
 ### Databricks
 
 See `notebooks/aef_bng_databricks.ipynb` for a complete walkthrough covering installation, configuration, running the pipeline, verification, and query examples.
