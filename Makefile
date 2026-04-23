@@ -18,7 +18,7 @@ UNDERLINE := \033[4m
 # ==================================================================================== #
 .PHONY: install check test nox clean
 
-install: ## install the virtual environment and install the pre-commit hooks
+install: ## install all group dependencies and install the pre-commit hooks
 	@echo "$(PURPLE)--- Installing Environment ---$(ENDC)"
 	@echo "$(BLUE) > Creating virtual environment and syncing dependencies...$(ENDC)"
 	@uv sync --all-groups --all-extras

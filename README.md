@@ -89,26 +89,42 @@ A Makefile has been included for ease of use, install all project dependency gro
 make install
 ```
 
-If you want to install require dependencies:
+If you want to install required dependencies:
 
 ```bash
 uv sync
 ```
 
-For Spark/Databricks usage:
+For running local notebooks:
 
 ```bash
-uv sync --extra spark
+uv sync --extra notebooks
+```
+
+For the visualisation CLI:
+
+```bash
+uv sync --extra viz
 ```
 
 ## Usage
 
+### Databricks
+
+See `notebooks/aef_bng_databricks.ipynb` for a complete walkthrough covering installation, configuration, running the pipeline, verification, and query examples.
+
+This still needs implementing fully so is general proof-of-concept workflow.
+
+You could also execute this using [`databricks-connect`](https://pypi.org/project/databricks-connect/) and the [Databricks VS Code extension](https://docs.databricks.com/aws/en/dev-tools/vscode-ext/) for running code locally via a Databricks cluster.
+
 ### CLI (local mode)
+
+Simplest approach for now.
 
 ```bash
 # Process a single year for all of GB (uses default BNG bounds)
 aef-bng process --year 2025 \
-    --output ./london_aef
+    --output ./aef
 
 # Process specific bounds (Central London area) for a single year
 aef-bng process \
@@ -123,11 +139,24 @@ aef-bng process \
     --output ./london_aef
 ```
 
-### Databricks
+### Visualising output
 
-See `notebooks/aef_bng_databricks.ipynb` for a complete walkthrough covering installation, configuration, running the pipeline, verification, and query examples.
+The `visualise` command inspects a GeoParquet output directory and produces two files:
 
-You could also execute this using [`databricks-connect`](https://pypi.org/project/databricks-connect/) and the [Databricks VS Code extension](https://docs.databricks.com/aws/en/dev-tools/vscode-ext/) for running code locally via a Databricks cluster.
+- **`spatial_partitioning.png`** — static plot showing file extents and row-group extents on a basemap
+- **`spatial_partitioning.html`** — interactive [`lonboard`](https://developmentseed.org/lonboard/latest/) map coloured by file, openable in any browser
+
+```bash
+# Custom output paths
+aef-bng visualise london_aef/2025 \
+    --png london_aef/2025/london_partitioning.png \
+    --html london_aef/2025/london_partitioning.html
+```
+
+<p align="center">
+  <img src="docs/london-example-partitions.jpg" alt="London partition example" width=95%>
+</p>
+<p align="center"><em>Example local GeoParquet partitions.</a></em></p>
 
 ## Development
 
@@ -185,6 +214,7 @@ aef_bng/
   reproject.py    UTM -> BNG reprojection and first-valid tile merging
   spark.py        Distributed Spark pipeline (mapInArrow + Unity Catalog)
   types.py        BoundingBox with CRS reprojection
+  visualise.py    Spatial partitioning visualiser (static PNG + lonboard HTML map)
   writer.py       GeoParquet writer (geoparquet-io: bbox, Hilbert sort, KD-tree partition)
 ```
 

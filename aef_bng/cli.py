@@ -90,5 +90,41 @@ def process(
         click.echo(f"Year {year}: {rows:,} rows written")
 
 
+@main.command()
+@click.argument("directory", type=click.Path(exists=True, file_okay=False, resolve_path=True))
+@click.option(
+    "--png",
+    "png_path",
+    default="spatial_partitioning.png",
+    show_default=True,
+    help="Output path for the static PNG plot.",
+)
+@click.option(
+    "--html",
+    "html_path",
+    default="spatial_partitioning.html",
+    show_default=True,
+    help="Output path for the interactive HTML map.",
+)
+def visualise(directory: str, png_path: str, html_path: str) -> None:
+    """Visualise spatial partitioning of a GeoParquet dataset directory.
+
+    DIRECTORY should contain .parquet files, e.g. london_aef/2025.
+
+    Requires the viz extras:  uv sync --extra viz
+    """
+    from aef_bng.visualise import visualise as _visualise
+
+    try:
+        _visualise(directory, png_path=png_path, html_path=html_path)
+    except ImportError as e:
+        raise click.ClickException(str(e)) from e
+    except ValueError as e:
+        raise click.ClickException(str(e)) from e
+
+    click.secho(f"PNG  -> {png_path}", fg="green")
+    click.secho(f"HTML -> {html_path}", fg="green")
+
+
 if __name__ == "__main__":
     main()
