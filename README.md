@@ -3,9 +3,9 @@
 Reproject [Alpha Earth Foundation embeddings](https://deepmind.google/blog/alphaearth-foundations-helps-map-our-planet-in-unprecedented-detail/) from their native UTM grids onto the British National Grid (EPSG:27700) in Delta or GeoParquet format.
 
 <p align="center">
-  <img src="docs/london-example.jpg" alt="London Example">
+  <img src="docs/london-example.jpg" alt="London Example" width=75%>
 </p>
-<p align="center"><em>Alpha Earth tabular embeddings for London, UK (2025).</a></em></p>
+<p align="center"><em>Alpha Earth embeddings for London, UK (2025).</a></em></p>
 
 ## Why
 
