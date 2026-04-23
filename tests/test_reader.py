@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock
+
+import numpy as np
 import pytest
 from affine import Affine
 
-from aef_bng.reader import _bounds_to_window, _strip_s3_prefix, bng_bounds_to_utm
+import aef_bng.reader
+from aef_bng.reader import _bounds_to_window, _strip_s3_prefix, bng_bounds_to_utm, read_tile
 
 
 @pytest.mark.unit
@@ -85,3 +89,37 @@ class TestBngBoundsToUtm:
         assert with_pad[1] < no_pad[1]  # miny is smaller
         assert with_pad[2] > no_pad[2]  # maxx is larger
         assert with_pad[3] > no_pad[3]  # maxy is larger
+
+
+@pytest.mark.unit
+class TestReadTile:
+    """Tests for async read_tile logic."""
+
+    @pytest.mark.asyncio
+    async def test_read_tile_with_window(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test read_tile correctly reads window when bounds overlap."""
+
+        mock_geotiff = AsyncMock()
+        mock_geotiff.crs = "EPSG:32630"
+        mock_geotiff.width = 1000
+        mock_geotiff.height = 1000
+        mock_geotiff.transform = Affine(10, 0, 0, 0, -10, 1000)
+
+        mock_array = MagicMock()
+        mock_array.data = np.ones((64, 10, 10), dtype=np.int8)
+        mock_array.transform = Affine(10, 0, 100, 0, -10, 800)
+        mock_geotiff.read.return_value = mock_array
+
+        mock_open = AsyncMock(return_value=mock_geotiff)
+        monkeypatch.setattr(aef_bng.reader.GeoTIFF, "open", mock_open)
+
+        result = await read_tile("s3://bucket/test.tif", window_bounds=(100, 200, 200, 300))
+        assert result is not None
+        data, _, crs = result
+
+        assert data.shape == (64, 10, 10)
+        assert crs == "EPSG:32630"
+        mock_geotiff.read.assert_called_once()
+
+        _, kwargs = mock_geotiff.read.call_args
+        assert "window" in kwargs
