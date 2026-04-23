@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import pyarrow as pa
 import pytest
+from pyspark.sql import SparkSession
 
 from aef_bng.constants import AEF_BAND_NAMES
-from aef_bng.spark import _empty_batch, _output_schema
+from aef_bng.spark import _build_chunks_dataframe, _empty_batch, _output_schema
 
 
 @pytest.mark.unit
@@ -62,3 +63,26 @@ class TestEmptyBatch:
         batch = _empty_batch(schema)
         assert set(batch.schema.names) == set(schema.names)
         assert "geometry_wkb" in batch.schema.names
+
+
+@pytest.mark.unit
+class TestSparkDataFrame:
+    """Tests for spark dataframe construction."""
+
+    def test_build_chunks_dataframe(self, spark: object, sample_config: object) -> None:
+        """Test _build_chunks_dataframe creates correct schema and row counts."""
+
+        if not isinstance(spark, SparkSession):
+            pytest.skip("No spark session")
+
+        config = sample_config
+        df = _build_chunks_dataframe(spark, config)
+
+        # sample_config has bounds for 1 10km chunk and 1 year
+        assert df.count() == 1
+
+        columns = df.columns
+        assert "bng_10km_ref" in columns
+        assert "bounds_bng_0" in columns
+        assert "bounds_wgs84_0" in columns
+        assert "year" in columns
