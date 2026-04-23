@@ -45,3 +45,19 @@ def sample_raster() -> np.ndarray:
 def all_nodata_raster() -> np.ndarray:
     """Raster where all pixels are nodata."""
     return np.full((AEF_NUM_BANDS, 1000, 1000), AEF_NODATA, dtype=np.int8)
+
+
+@pytest.fixture(scope="session")
+def spark() -> object:
+    """Local SparkSession for testing."""
+    try:
+        from pyspark.sql import SparkSession
+    except ImportError:
+        pytest.skip("pyspark not installed")
+
+    return (
+        SparkSession.builder.master("local[1]")
+        .appName("pytest-pyspark")
+        .config("spark.sql.execution.arrow.pyspark.enabled", "true")
+        .getOrCreate()
+    )
