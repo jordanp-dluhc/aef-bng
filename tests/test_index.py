@@ -99,6 +99,23 @@ class TestAEFBNGIndex:
         with pytest.raises(RuntimeError, match="not loaded"):
             index.tiles_for_chunk(chunk, 2024)
 
+    def test_load_for_bounds(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test load_for_bounds with mocked network request."""
+        mock_gdf = _make_mock_gdf()
+
+        import geopandas as gpd
+
+        def mock_read_parquet(*args: object, **kwargs: object) -> gpd.GeoDataFrame:
+            return mock_gdf
+
+        monkeypatch.setattr(gpd, "read_parquet", mock_read_parquet)
+
+        index = AEFBNGIndex()
+        bounds = (530_000, 180_000, 540_000, 190_000)
+        gdf = index.load_for_bounds(bounds, years=[2024])
+
+        assert len(gdf) >= 0
+
 
 class _Row(dict):
     """Dict that also supports attribute access — mimics a pandas Series row."""
