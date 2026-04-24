@@ -49,6 +49,12 @@ This work is currently a proof-of-concept to serve specific niche use case in ge
 
 The AEF tile index is a [STAC GeoParquet](https://stac-utils.github.io/stac-geoparquet/latest/) file on Source Cooperative S3. The pipeline queries it directly with predicate pushdown on `bbox` and `datetime` columns — only the rows overlapping the requested BNG extent and years are downloaded. Tiles outside the BNG grid are filtered out with spatial predicate pushdown filters.
 
+### COG orientation
+
+AEF COGs are "bottom-up": the origin is at the bottom-left corner and the y-resolution is positive, which is the inverse of a standard top-down COG. [Source Cooperative's README](https://source.coop/tge-labs/aef#object-object) recommends using the companion `.vrt` files to correct this for software that assumes standard row ordering.
+
+This pipeline reads the raw `.tiff` files directly and does not need the VRTs. `async_geotiff` reads the affine transform from the TIFF tags and returns it with the data, and `rasterio.warp.reproject` uses that transform to correctly map pixel coordinates to world coordinates regardless of y-scale sign. The windowed read helper in `reader.py` also handles this explicitly by transforming all four geographic corners to pixel space (rather than assuming two corners suffice), which is necessary to avoid a negative window height when y-resolution is positive.
+
 ### Output schemas
 
 Both modes use the same flat embedding representation — 64 individual `TINYINT` columns (`A00`..`A63`).
