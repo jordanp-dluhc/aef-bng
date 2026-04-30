@@ -1,13 +1,18 @@
 """Local processing orchestration for AEF-BNG pipeline.
 
-Coordinates reading, reprojection, extraction, and writing for each 10km BNG chunk across
-requested years.
+Two-phase architecture:
+  1. Stream: process chunks and append to a raw parquet file (O(row_group) memory)
+  2. Optimise: gpio CLI sorts (Hilbert) and partitions (KD-tree) with GeoParquet 2.0
+
+This enables processing arbitrarily large extents without OOM while producing
+optimally-partitioned output for spatial queries.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -19,7 +24,7 @@ from aef_bng.grid import BNGOutputGrid, ChunkSpec
 from aef_bng.index import AEFBNGIndex
 from aef_bng.reader import bng_bounds_to_utm, read_tile
 from aef_bng.reproject import merge_tiles, reproject_tile_to_bng
-from aef_bng.writer import write_geoparquet
+from aef_bng.writer import StreamingParquetWriter, optimise_output
 
 if TYPE_CHECKING:
     import pyarrow as pa
@@ -99,8 +104,10 @@ async def process_chunk(
 async def process_year(config: AEFBNGConfig, year: int, index: AEFBNGIndex) -> int:
     """Process all chunks for a single year.
 
-    Collects all chunk tables, then writes them as partitioned
-    GeoParquet files (part-NNNN-{id}.parquet).
+    Phase 1: Streams chunk tables to a raw temp parquet file.
+            Up to ``config.max_workers`` chunks are read and reprojected concurrently;
+            results are written to disk as each task completes.
+    Phase 2: Optimises output with gpio (Hilbert sort + KD-tree partition + GeoParquet 2.0).
 
     Args:
         config: Pipeline configuration.
@@ -111,29 +118,40 @@ async def process_year(config: AEFBNGConfig, year: int, index: AEFBNGIndex) -> i
         Total number of rows written.
     """
     grid = BNGOutputGrid(config.bounds, config.chunk_size)
-    chunks = grid.enumerate_chunks()
+    chunks = list(grid.enumerate_chunks())
 
     semaphore = asyncio.Semaphore(config.max_workers)
-    chunk_tables: list = []
+    output_dir = Path(config.output_path) / str(year)
+    raw_path = output_dir / "_raw.parquet"
 
-    async def _process_one(chunk: ChunkSpec) -> None:
+    async def _bounded(chunk: ChunkSpec) -> pa.Table | None:
         async with semaphore:
-            table = await process_chunk(chunk, year, index, config)
+            return await process_chunk(chunk, year, index, config)
+
+    # Phase 1: Stream chunks to raw parquet (concurrent reads, sequential writes)
+    writer = StreamingParquetWriter(raw_path)
+
+    tasks = [asyncio.create_task(_bounded(c)) for c in chunks]
+    with tqdm(total=len(tasks), desc=f"Year {year}", unit="chunk") as pbar:
+        for coro in asyncio.as_completed(tasks):
+            table = await coro
             if table is not None and table.num_rows > 0:
-                chunk_tables.append(table)
+                writer.write_table(table)
+            pbar.update(1)
 
-    for chunk in tqdm(chunks, desc=f"Year {year}", unit="chunk"):
-        await _process_one(chunk)
+    writer.close()
+    total_rows = writer.total_rows
 
-    if not chunk_tables:
+    if total_rows == 0:
+        raw_path.unlink(missing_ok=True)
         logger.info("Year %d: no data found", year)
         return 0
 
-    # write all chunks as part files into output_dir/year/
-    output_dir = f"{config.output_path}/{year}"
-    total_rows = write_geoparquet(chunk_tables, output_dir)
+    # Phase 2: Optimise with gpio (Hilbert sort + KD-tree + GeoParquet 2.0)
+    logger.info("Year %d: %d rows written, optimizing output...", year, total_rows)
+    optimise_output(raw_path, output_dir, total_rows)
+    logger.info("Year %d complete: %d total rows -> %s", year, total_rows, output_dir)
 
-    logger.info("Year %d complete: %d total rows", year, total_rows)
     return total_rows
 
 
