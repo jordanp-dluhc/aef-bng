@@ -14,9 +14,10 @@ from aef_bng.constants import AEF_NUM_BANDS, BNG_RESOLUTION
 from aef_bng.extract import extract_pixels
 from aef_bng.grid import ChunkSpec
 from aef_bng.writer import (
-    _TARGET_ROWS_PER_PARTITION,
+    StreamingParquetWriter,
     _build_wkb_column,
-    _kdtree_iterations,
+    _compute_partitions,
+    prepare_table_for_write,
     write_geoparquet,
 )
 
@@ -39,24 +40,37 @@ def _make_test_table(n: int = 10) -> pa.Table:
 
 
 @pytest.mark.unit
-class TestKdtreeIterations:
-    """Tests for KD-tree iteration calculation."""
+class TestComputePartitions:
+    """Tests for _compute_partitions."""
 
-    def test_at_target_returns_one(self) -> None:
-        """Dataset at exactly _TARGET_ROWS_PER_PARTITION returns 1 iteration (2 partitions)."""
-        assert _kdtree_iterations(_TARGET_ROWS_PER_PARTITION) == 1
+    def test_small_dataset_no_partition(self) -> None:
+        """Dataset below target returns 1 (no split)."""
+        assert _compute_partitions(10_000_000) == 1
 
-    def test_two_times_target(self) -> None:
-        """2x target → 1 iteration (2 partitions, ~1 file each)."""
-        assert _kdtree_iterations(_TARGET_ROWS_PER_PARTITION * 2) == 1
+    def test_at_target_no_partition(self) -> None:
+        """Dataset at exactly target returns 1."""
+        assert _compute_partitions(15_000_000) == 1
 
-    def test_ten_times_target(self) -> None:
-        """10x target → 4 iterations (16 partitions)."""
-        assert _kdtree_iterations(_TARGET_ROWS_PER_PARTITION * 10) == 4  # ceil(log2(10)) = 4
+    def test_50m_rows(self) -> None:
+        """50M rows → 4 partitions (12.5M/file)."""
+        assert _compute_partitions(50_000_000) == 4
 
-    def test_capped_at_nine(self) -> None:
-        """Iterations are capped at 9 regardless of dataset size."""
-        assert _kdtree_iterations(10**12) == 9
+    def test_91m_rows(self) -> None:
+        """91M rows (all GB) → 8 partitions (11.4M/file)."""
+        assert _compute_partitions(91_000_000) == 8
+
+    def test_195m_rows(self) -> None:
+        """195M rows → 16 partitions (12.2M/file)."""
+        assert _compute_partitions(194_954_498) == 16
+
+    def test_always_power_of_two(self) -> None:
+        """Result is always a power of 2."""
+        import math
+
+        for n in [30_000_000, 60_000_000, 120_000_000, 200_000_000]:
+            result = _compute_partitions(n)
+            assert result >= 1
+            assert math.log2(result) == int(math.log2(result))
 
 
 @pytest.mark.unit
@@ -88,8 +102,117 @@ class TestBuildWkbColumn:
 
 
 @pytest.mark.unit
-class TestWriteGeoparquet:
-    """Tests for write_geoparquet."""
+class TestPrepareTableForWrite:
+    """Tests for prepare_table_for_write."""
+
+    def test_adds_geometry_retains_coordinates(self) -> None:
+        """Geometry column is added; easting and northing are preserved."""
+        table = _make_test_table(5)
+        result = prepare_table_for_write(table)
+        assert "easting" in result.column_names
+        assert "northing" in result.column_names
+        assert "geometry" in result.column_names
+
+    def test_attaches_geo_metadata(self) -> None:
+        """Output table has GeoParquet 'geo' schema metadata."""
+        table = _make_test_table(5)
+        result = prepare_table_for_write(table)
+        meta = result.schema.metadata
+        assert b"geo" in meta
+        geo = json.loads(meta[b"geo"])
+        assert geo["primary_column"] == "geometry"
+
+    def test_preserves_row_count(self) -> None:
+        """Row count is unchanged."""
+        table = _make_test_table(10)
+        result = prepare_table_for_write(table)
+        assert result.num_rows == 100
+
+
+@pytest.mark.unit
+class TestStreamingParquetWriter:
+    """Tests for StreamingParquetWriter."""
+
+    def test_creates_file(self, tmp_path: Path) -> None:
+        """Writer creates a parquet file."""
+        path = tmp_path / "test.parquet"
+        writer = StreamingParquetWriter(path)
+        writer.write_table(_make_test_table(5))
+        writer.close()
+        assert path.exists()
+
+    def test_total_rows_accumulates(self, tmp_path: Path) -> None:
+        """total_rows tracks cumulative rows written."""
+        path = tmp_path / "test.parquet"
+        writer = StreamingParquetWriter(path)
+        writer.write_table(_make_test_table(5))  # 25 rows
+        writer.write_table(_make_test_table(10))  # 100 rows
+        writer.close()
+        assert writer.total_rows == 125
+
+    def test_file_contains_all_rows(self, tmp_path: Path) -> None:
+        """Parquet file contains all rows from multiple writes."""
+        path = tmp_path / "test.parquet"
+        writer = StreamingParquetWriter(path)
+        writer.write_table(_make_test_table(5))  # 25
+        writer.write_table(_make_test_table(10))  # 100
+        writer.close()
+
+        result = pq.read_table(str(path))
+        assert result.num_rows == 125
+
+    def test_file_has_geometry_and_coordinate_columns(self, tmp_path: Path) -> None:
+        """Output file has WKB geometry column alongside easting and northing."""
+        path = tmp_path / "test.parquet"
+        writer = StreamingParquetWriter(path)
+        writer.write_table(_make_test_table(5))
+        writer.close()
+
+        result = pq.read_table(str(path))
+        assert "geometry" in result.column_names
+        assert "easting" in result.column_names
+        assert "northing" in result.column_names
+
+    def test_file_has_geo_metadata(self, tmp_path: Path) -> None:
+        """Output file has GeoParquet metadata in the schema."""
+        path = tmp_path / "test.parquet"
+        writer = StreamingParquetWriter(path)
+        writer.write_table(_make_test_table(5))
+        writer.close()
+
+        schema = pq.read_schema(str(path))
+        assert b"geo" in schema.metadata
+        geo = json.loads(schema.metadata[b"geo"])
+        assert geo["primary_column"] == "geometry"
+
+    def test_geometries_are_valid(self, tmp_path: Path) -> None:
+        """Written geometries decode to valid 10m polygons."""
+        from shapely.wkb import loads as wkb_loads
+
+        path = tmp_path / "test.parquet"
+        writer = StreamingParquetWriter(path)
+        writer.write_table(_make_test_table(5))
+        writer.close()
+
+        result = pq.read_table(str(path))
+        wkb_col = result.column("geometry")
+        for i in range(min(5, len(wkb_col))):
+            poly = wkb_loads(wkb_col[i].as_py())
+            assert poly.geom_type == "Polygon"
+            assert abs(poly.area - 100.0) < 1e-6
+
+    def test_creates_parent_directories(self, tmp_path: Path) -> None:
+        """Writer creates parent directories if they don't exist."""
+        path = tmp_path / "nested" / "dir" / "test.parquet"
+        writer = StreamingParquetWriter(path)
+        writer.write_table(_make_test_table(5))
+        writer.close()
+        assert path.exists()
+
+
+@pytest.mark.unit
+class TestWriteGeoparquetLegacy:
+    """Tests for the legacy write_geoparquet API."""
 
     def test_empty_input_returns_zero(self, tmp_path: Path) -> None:
         """Empty table list writes nothing and returns 0."""
@@ -110,13 +233,6 @@ class TestWriteGeoparquet:
         result = write_geoparquet([table], str(tmp_path / "out"))
         assert result == 100
 
-    def test_multiple_tables_combined(self, tmp_path: Path) -> None:
-        """Multiple tables are combined and all rows written."""
-        t1 = _make_test_table(5)  # 25 rows
-        t2 = _make_test_table(10)  # 100 rows
-        result = write_geoparquet([t1, t2], str(tmp_path / "out"))
-        assert result == 125
-
     def test_geoparquet_metadata_present(self, tmp_path: Path) -> None:
         """Output file contains valid GeoParquet 'geo' schema metadata."""
         table = _make_test_table(5)
@@ -127,47 +243,6 @@ class TestWriteGeoparquet:
         assert b"geo" in schema_meta
         geo = json.loads(schema_meta[b"geo"])
         assert geo["primary_column"] == "geometry"
-
-    def test_geometry_type_is_polygon(self, tmp_path: Path) -> None:
-        """geometry column is declared as Polygon in GeoParquet metadata."""
-        table = _make_test_table(5)
-        out_dir = str(tmp_path / "out")
-        write_geoparquet([table], out_dir)
-        parquet_file = next(Path(out_dir).glob("**/*.parquet"))
-        schema_meta = pq.read_schema(str(parquet_file)).metadata
-        geo = json.loads(schema_meta[b"geo"])
-        assert "Polygon" in geo["columns"]["geometry"]["geometry_types"]
-
-    def test_bbox_covering_column_present(self, tmp_path: Path) -> None:
-        """Output file contains a bbox struct covering column."""
-        table = _make_test_table(5)
-        out_dir = str(tmp_path / "out")
-        write_geoparquet([table], out_dir)
-        parquet_file = next(Path(out_dir).glob("**/*.parquet"))
-        schema = pq.read_schema(str(parquet_file))
-        assert "bbox" in schema.names
-
-    def test_output_columns(self, tmp_path: Path) -> None:
-        """Output has bng_ref, year, bands, geometry, bbox; no easting/northing."""
-        table = _make_test_table(5)
-        out_dir = str(tmp_path / "out")
-        write_geoparquet([table], out_dir)
-        parquet_file = next(Path(out_dir).glob("**/*.parquet"))
-        col_names = pq.read_schema(str(parquet_file)).names
-        assert "bng_ref" in col_names
-        assert "year" in col_names
-        assert "geometry" in col_names
-        assert "bbox" in col_names
-        assert "easting" not in col_names
-        assert "northing" not in col_names
-
-    def test_row_count_in_file_matches_input(self, tmp_path: Path) -> None:
-        """Total rows in all written files match the input table row count."""
-        table = _make_test_table(10)  # 100 rows
-        out_dir = str(tmp_path / "out")
-        write_geoparquet([table], out_dir)
-        total = sum(pq.read_metadata(str(f)).num_rows for f in Path(out_dir).glob("**/*.parquet"))
-        assert total == 100
 
     def test_geometries_are_valid_polygons(self, tmp_path: Path) -> None:
         """Written geometries decode to valid 10m x 10m BNG cell polygons."""

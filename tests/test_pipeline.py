@@ -129,8 +129,8 @@ class TestProcessYear:
         assert result == 0
 
     @pytest.mark.asyncio
-    async def test_with_data_writes_and_returns_count(self, tmp_path) -> None:
-        """process_year writes GeoParquet and returns total row count."""
+    async def test_streams_raw_and_optimises(self, tmp_path) -> None:
+        """process_year streams to raw parquet then calls optimise_output."""
         config = AEFBNGConfig(
             years=[2024],
             bounds=(530_000, 180_000, 540_000, 190_000),
@@ -141,6 +141,7 @@ class TestProcessYear:
         with (
             patch("aef_bng.pipeline.read_tile", new_callable=AsyncMock) as mock_read,
             patch("aef_bng.pipeline.reproject_tile_to_bng") as mock_reproject,
+            patch("aef_bng.pipeline.optimise_output") as mock_optimise,
         ):
             from affine import Affine
 
@@ -154,7 +155,12 @@ class TestProcessYear:
             result = await process_year(config, 2024, index)
 
         assert result == 1_000_000
-        assert any((tmp_path / "2024").glob("*.parquet"))
+        # optimise_output should have been called with raw path, output dir, and total rows
+        mock_optimise.assert_called_once()
+        call_args = mock_optimise.call_args
+        assert str(call_args[0][0]).endswith("_raw.parquet")
+        assert str(call_args[0][1]).endswith("2024")
+        assert call_args[0][2] == 1_000_000
 
 
 @pytest.mark.unit
