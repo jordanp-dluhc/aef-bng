@@ -11,7 +11,6 @@ Requires the ``viz`` optional dependencies::
 
 from __future__ import annotations
 
-import warnings
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -42,7 +41,6 @@ def _require_viz_deps() -> None:
     """Raise ImportError with install instructions if viz extras are missing."""
     missing = []
     for pkg, import_name in [
-        ("geoarrow-rust-io", "geoarrow.rust.io"),
         ("lonboard", "lonboard"),
         ("matplotlib", "matplotlib"),
         ("contextily", "contextily"),
@@ -61,66 +59,63 @@ def _hex_to_rgba(hex_color: str, alpha: int = 30) -> list[int]:
     return [int(h[i : i + 2], 16) for i in (0, 2, 4)] + [alpha]
 
 
-def _extract_bounds_from_fragment(
-    fragment, directory: Path
-) -> tuple[list[float] | None, list[list[float]]]:
-    """Extract file and row-group bounds from a GeoParquetFile fragment.
+def _extract_bounds_from_path(path: Path) -> tuple[list[float] | None, list[list[float]]]:
+    """Extract file and row-group bounds from a GeoParquet file.
 
-    Tries geoarrow-rs first; falls back to geoparquet-io using the
-    absolute file path.
+    Reads Parquet column chunk min/max statistics from the ``bbox`` struct
+    column written by ``gpio sort hilbert --add-bbox``. Purely PyArrow-based —
+    no DuckDB or geoarrow-rs required.
+
+    Each row group's spatial extent is derived as:
+      [min(bbox.xmin), min(bbox.ymin), max(bbox.xmax), max(bbox.ymax)]
+
+    The file-level extent is the union of all row group extents.
 
     Args:
-        fragment: A GeoParquetFile fragment from a GeoParquetDataset.
-        directory: Absolute path to the dataset directory (for the fallback).
+        path: Absolute path to a single .parquet file.
 
     Returns:
         Tuple of (file_bounds, rg_bounds) where each element is
-        [xmin, ymin, xmax, ymax].
+        [xmin, ymin, xmax, ymax], or (None, []) if no bbox statistics found.
     """
-    try:
-        file_bounds = fragment.file_bbox()
-        rg_structs = fragment.row_groups_bounds().to_pylist()
-        rg_bounds = [[d["xmin"], d["ymin"], d["xmax"], d["ymax"]] for d in rg_structs]
+    import pyarrow.parquet as pq
 
-        # file_bbox() returns None when the covering column uses a struct type
-        # that geoarrow-rs can't read stats from. Derive from row groups instead.
-        if file_bounds is None and rg_bounds:
-            file_bounds = [
-                min(rb[0] for rb in rg_bounds),
-                min(rb[1] for rb in rg_bounds),
-                max(rb[2] for rb in rg_bounds),
-                max(rb[3] for rb in rg_bounds),
-            ]
+    meta = pq.read_metadata(str(path))
+    rg_bounds: list[list[float]] = []
 
-        return file_bounds, rg_bounds  # noqa: TRY300
-    except Exception as e:
-        import logging
+    for rg_idx in range(meta.num_row_groups):
+        rg = meta.row_group(rg_idx)
+        stats: dict[str, object] = {}
+        for col_idx in range(rg.num_columns):
+            col = rg.column(col_idx)
+            if col.statistics and col.path_in_schema in {
+                "bbox.xmin",
+                "bbox.ymin",
+                "bbox.xmax",
+                "bbox.ymax",
+            }:
+                stats[col.path_in_schema] = col.statistics
 
-        logging.getLogger(__name__).debug(
-            "geoarrow-rs failed (%s), falling back to geoparquet-io", e
-        )
+        if all(k in stats for k in ("bbox.xmin", "bbox.ymin", "bbox.xmax", "bbox.ymax")):
+            rg_bounds.append(
+                [
+                    stats["bbox.xmin"].min,  # type: ignore[union-attr]
+                    stats["bbox.ymin"].min,  # type: ignore[union-attr]
+                    stats["bbox.xmax"].max,  # type: ignore[union-attr]
+                    stats["bbox.ymax"].max,  # type: ignore[union-attr]
+                ]
+            )
 
-    abs_path = str(directory / fragment.path)
-    try:
-        from geoparquet_io.core.duckdb_metadata import (
-            find_primary_geometry_column_duckdb,
-            get_aggregated_native_geo_stats,
-            get_per_row_group_bbox_stats,
-        )
+    if not rg_bounds:
+        return None, []
 
-        geom_col = find_primary_geometry_column_duckdb(abs_path)
-        file_stats = get_aggregated_native_geo_stats(abs_path, geom_col)
-        file_bounds = file_stats.get("bbox") if file_stats else None
-
-        rg_stats = get_per_row_group_bbox_stats(abs_path, bbox_column=geom_col)
-        rg_bounds = [
-            [rg["xmin"], rg["ymin"], rg["xmax"], rg["ymax"]]
-            for rg in rg_stats
-            if all(k in rg for k in ("xmin", "ymin", "xmax", "ymax"))
-        ]
-        return file_bounds, rg_bounds  # noqa: TRY300
-    except Exception as e2:
-        raise RuntimeError(f"Both backends failed. geoparquet-io error: {e2}") from e2
+    file_bounds: list[float] = [
+        min(rb[0] for rb in rg_bounds),
+        min(rb[1] for rb in rg_bounds),
+        max(rb[2] for rb in rg_bounds),
+        max(rb[3] for rb in rg_bounds),
+    ]
+    return file_bounds, rg_bounds
 
 
 def _static_plot(
@@ -205,7 +200,7 @@ def _static_plot(
     )
 
     plt.tight_layout(rect=(0.0, 0.06, 1.0, 1.0))
-    plt.savefig(output_path, dpi=300, bbox_inches="tight")
+    plt.savefig(output_path, dpi=75, bbox_inches="tight")
     plt.close(fig)
 
 
@@ -287,9 +282,8 @@ def visualise(
 
     _require_viz_deps()
 
-    import geoarrow.rust.io as gio  # type: ignore[import-not-found]
     import geopandas as gpd
-    from obstore.store import LocalStore
+    import pyarrow.parquet as pq
     from shapely.geometry import box
 
     logger = logging.getLogger(__name__)
@@ -298,32 +292,28 @@ def visualise(
     if not directory.is_dir():
         raise ValueError(f"Not a directory: {directory}")
 
-    warnings.filterwarnings("ignore", category=RuntimeWarning, message=".*reconstructed a store.*")
-
-    store = LocalStore(str(directory))
-    objects = [
-        obj for obj in store.list_with_delimiter()["objects"] if obj["path"].endswith(".parquet")
-    ]
-
-    if not objects:
+    parquet_files = sorted(directory.glob("**/*.parquet"))
+    if not parquet_files:
         raise ValueError(f"No .parquet files found in {directory}")
 
-    dataset = gio.GeoParquetDataset.open(objects, store=store)
+    total_rows = sum(pq.read_metadata(str(f)).num_rows for f in parquet_files)
+    total_rgs = sum(pq.read_metadata(str(f)).num_row_groups for f in parquet_files)
     logger.info(
         "Opened dataset: %d file(s), %d row groups, %s rows",
-        len(dataset.fragments),
-        dataset.num_row_groups,
-        f"{dataset.num_rows:,}",
+        len(parquet_files),
+        total_rgs,
+        f"{total_rows:,}",
     )
 
     file_polygons: list = []
     per_file_rg_gdfs: list[gpd.GeoDataFrame] = []
     fragment_paths: list[str] = []
 
-    for fragment in dataset.fragments:
-        logger.debug("Processing %s", fragment.path)
+    for f in parquet_files:
+        rel = str(f.relative_to(directory))
+        logger.debug("Processing %s", rel)
         try:
-            f_bounds, rg_bounds_list = _extract_bounds_from_fragment(fragment, directory)
+            f_bounds, rg_bounds_list = _extract_bounds_from_path(f)
 
             if f_bounds and len(f_bounds) >= 4:
                 file_polygons.append(box(f_bounds[0], f_bounds[1], f_bounds[2], f_bounds[3]))
@@ -332,10 +322,10 @@ def visualise(
                 box(rb[0], rb[1], rb[2], rb[3]) for rb in rg_bounds_list if rb and len(rb) >= 4
             ]
             per_file_rg_gdfs.append(gpd.GeoDataFrame(geometry=rg_polys, crs="EPSG:27700"))
-            fragment_paths.append(fragment.path)
+            fragment_paths.append(rel)
 
         except Exception:
-            logger.exception("Failed to process %s", fragment.path)
+            logger.exception("Failed to process %s", rel)
 
     if not file_polygons:
         raise ValueError("No bounds could be extracted from any file.")
