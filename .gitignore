@@ -207,3 +207,4 @@ frontend/django_extensions
 *.tab
 *.tfw
 *.jar
+*.ds_store
