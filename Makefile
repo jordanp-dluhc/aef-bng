@@ -33,7 +33,7 @@ check: ## run code quality tools
 	@echo "$(BLUE) > Checking lock file consistency...$(ENDC)"
 	@uv lock --locked
 	@echo "$(BLUE) > Running pre-commit checks...$(ENDC)"
-	@uvx pre-commit run -a
+	@uv run pre-commit run -a
 	@echo "$(GREEN)All checks passed!$(ENDC)"
 
 test: ## test the code with pytest
@@ -51,14 +51,14 @@ nox: ## run nox session
 
 build: ## build wheel file
 	@echo "$(ORANGE)--- Cleaning Build Artifacts ---$(ENDC)"
-	@rm -rf deps/files
-	@echo "$(GREEN)'./deps/files' directory removed.$(ENDC)"
+	@rm -rf dist/wheel
+	@echo "$(GREEN)'./dist/wheel' directory removed.$(ENDC)"
 	@echo "$(PURPLE)--- Building Project ---$(ENDC)"
 	@echo "$(BLUE) > Making wheel directory...$(ENDC)"
-	@mkdir -p "deps/files"
+	@mkdir -p "dist/wheel"
 	@echo "$(BLUE) > Creating wheel file...$(ENDC)"
-	@uv build --wheel --out-dir deps/files
-	@echo "$(GREEN)Build successful! Find the wheel in the './deps/files' directory.$(ENDC)"
+	@uv build --wheel --out-dir dist/wheel
+	@echo "$(GREEN)Build successful! Find the wheel in the './dist/wheel' directory.$(ENDC)"
 
 clean:
 	rm -rf .nox .pytest_cache .ruff_cache __pycache__ dist
