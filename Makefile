@@ -51,14 +51,14 @@ nox: ## run nox session
 
 build: ## build wheel file
 	@echo "$(ORANGE)--- Cleaning Build Artifacts ---$(ENDC)"
-	@rm -rf dist/wheel
-	@echo "$(GREEN)'./dist/wheel' directory removed.$(ENDC)"
+	@rm -rf deps/files
+	@echo "$(GREEN)'./deps/files' directory removed.$(ENDC)"
 	@echo "$(PURPLE)--- Building Project ---$(ENDC)"
 	@echo "$(BLUE) > Making wheel directory...$(ENDC)"
-	@mkdir -p "dist/wheel"
+	@mkdir -p "deps/files"
 	@echo "$(BLUE) > Creating wheel file...$(ENDC)"
-	@uv build --wheel --out-dir dist/wheel
-	@echo "$(GREEN)Build successful! Find the wheel in the './dist/wheel' directory.$(ENDC)"
+	@uv build --wheel --out-dir deps/files
+	@echo "$(GREEN)Build successful! Find the wheel in the './deps/files' directory.$(ENDC)"
 
 clean:
 	rm -rf .nox .pytest_cache .ruff_cache __pycache__ dist
