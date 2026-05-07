@@ -37,7 +37,9 @@ dev = [
 ]
 
 [project.optional-dependencies]
-spark = ["pyspark>=4.0.0"]
+spark = [
+    "databricks-connect==17.3",
+]
 viz = ["contextily>=1.7.0", "lonboard>=0.10.0", "matplotlib>=3.10.8"]
 
 
