@@ -16,7 +16,7 @@ UNDERLINE := \033[4m
 # ==================================================================================== #
 # MAKEFILE TARGETS
 # ==================================================================================== #
-.PHONY: install check test nox clean
+.PHONY: install check test nox clean build
 
 install: ## install all group dependencies and install the pre-commit hooks
 	@echo "$(PURPLE)--- Installing Environment ---$(ENDC)"
@@ -48,7 +48,18 @@ nox: ## run nox session
 	@uv run nox
 	@echo "$(GREEN)All nox checks finishe!$(ENDC)"
 
-# Clean
+
+build: ## build wheel file
+	@echo "$(ORANGE)--- Cleaning Build Artifacts ---$(ENDC)"
+	@rm -rf deps/files
+	@echo "$(GREEN)'./deps/files' directory removed.$(ENDC)"
+	@echo "$(PURPLE)--- Building Project ---$(ENDC)"
+	@echo "$(BLUE) > Making wheel directory...$(ENDC)"
+	@mkdir -p "deps/files"
+	@echo "$(BLUE) > Creating wheel file...$(ENDC)"
+	@uv build --wheel --out-dir deps/files
+	@echo "$(GREEN)Build successful! Find the wheel in the './deps/files' directory.$(ENDC)"
+
 clean:
 	rm -rf .nox .pytest_cache .ruff_cache __pycache__ dist
 	find . -type d -name __pycache__ -not -path "./.venv/*" -exec rm -rf {} +
