@@ -1,7 +1,7 @@
 [project]
 name = "aef-bng"
 version = "0.1.0"
-description = "AEF embeddings reprojected to British National Grid as GeoParquet."
+description = "AEF embeddings reprojected to British National Grid as GeoParquet or Delta Tables."
 authors = [{ name = "Jordan Pinder" }]
 readme = "README.md"
 license = { text = "MIT" }
@@ -44,7 +44,7 @@ viz = ["contextily>=1.7.0", "lonboard>=0.10.0", "matplotlib>=3.10.8"]
 
 
 [project.scripts]
-aef-bng = "aef_bng.cli:main"
+aef-bng = "aef_bng.cli:entrypoint"
 
 
 [project.urls]
@@ -64,7 +64,7 @@ py-modules = ["aef_bng"]
 line-length = 100
 indent-width = 4
 fix = true
-# extend-exclude = ["notebooks", "*.ipynb"]
+extend-exclude = ["notebooks", "*.ipynb"]
 
 [tool.ruff.lint]
 select = [
