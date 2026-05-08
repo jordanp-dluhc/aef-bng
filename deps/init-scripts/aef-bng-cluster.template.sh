@@ -7,7 +7,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 source $HOME/.local/bin/env
 
 # --- Locate wheel ---
-WHEEL_NAME="aef_bng-0.1.0-py3-none-any.whl"
+WHEEL_NAME="aef_bng-0.1.0-py3-none-any.whl" # Update with relevant wheel file name
 SCRIPT_DIR=$(dirname "$0")
 LOCAL_WHEEL_PATH="${SCRIPT_DIR}/${WHEEL_NAME}"
 UC_WHEEL_PATH="/Volumes/catalog/schema/volume/${WHEEL_NAME}"
