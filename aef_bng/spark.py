@@ -370,14 +370,10 @@ def process_with_spark(config: AEFBNGConfig) -> None:
             .saveAsTable(table_name)
         )
         write_elapsed = time.perf_counter() - t0
-        logger.info(
-            "Processing + write complete in %.1fs -> %s", write_elapsed, table_name
-        )
+        logger.info("Processing + write complete in %.1fs -> %s", write_elapsed, table_name)
     else:
         (result_df.write.format("delta").mode("append").save(config.output_path))
         write_elapsed = time.perf_counter() - t0
-        logger.info(
-            "Processing + write complete in %.1fs -> %s", write_elapsed, config.output_path
-        )
+        logger.info("Processing + write complete in %.1fs -> %s", write_elapsed, config.output_path)
 
     logger.info("Spark pipeline total: %.1fs", time.perf_counter() - t_total)
