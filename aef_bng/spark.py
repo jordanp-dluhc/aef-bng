@@ -138,17 +138,20 @@ async def _process_chunk_async(
 
 
 def _make_process_partition(  # noqa: C901
-    broadcast_index_bytes: Any,
-    broadcast_resampling: Any,
+    index_bytes: bytes,
+    resampling: str,
 ) -> Any:
-    """Create the partition processing function with broadcast references.
+    """Create the partition processing function with closure-captured state.
 
-    Returns the function to pass to ``mapInArrow``. The broadcasts are dereferenced once per
-    partition (not per row), amortising deserialisation.
+    Returns the function to pass to ``mapInArrow``. The index bytes and resampling
+    string are captured in the closure and serialised with the UDF — compatible with
+    serverless, Spark Connect, and classic SparkSession.
+
+    The index is deserialised once per partition (not per row), amortising the cost.
 
     Args:
-        broadcast_index_bytes: Spark broadcast of pickled AEFBNGIndex.
-        broadcast_resampling: Spark broadcast of resampling method string.
+        index_bytes: Pickled AEFBNGIndex bytes.
+        resampling: Resampling method string.
 
     Returns:
         Callable suitable for ``mapInArrow``.
@@ -161,8 +164,7 @@ def _make_process_partition(  # noqa: C901
         in one asyncio.run() call. This avoids repeated event loop creation/
         destruction which causes failures with the obstore/tokio runtime.
         """
-        index: AEFBNGIndex = pickle.loads(broadcast_index_bytes.value)  # noqa: S301
-        resampling: str = broadcast_resampling.value
+        index: AEFBNGIndex = pickle.loads(index_bytes)  # noqa: S301
         schema = _output_schema()
 
         # Collect all chunk specs from all batches in this partition
@@ -324,9 +326,7 @@ def process_with_spark(config: AEFBNGConfig) -> None:
     index = AEFBNGIndex()
     index.load_for_bounds(config.bounds, config.years)
     index_bytes = pickle.dumps(index)
-    broadcast_index = spark.sparkContext.broadcast(index_bytes)
-    broadcast_resampling = spark.sparkContext.broadcast(config.resampling)
-    logger.info("Index loaded and broadcast in %.1fs", time.perf_counter() - t0)
+    logger.info("Index loaded in %.1fs", time.perf_counter() - t0)
 
     # Phase 2: Build chunk grid and partition
     t0 = time.perf_counter()
@@ -350,7 +350,7 @@ def process_with_spark(config: AEFBNGConfig) -> None:
     # Phase 3: Distributed processing (mapInArrow)
     t0 = time.perf_counter()
     spark_schema = _spark_output_schema()
-    process_fn = _make_process_partition(broadcast_index, broadcast_resampling)
+    process_fn = _make_process_partition(index_bytes, config.resampling)
     result_df = chunks_df.mapInArrow(process_fn, schema=spark_schema)
 
     from pyspark.databricks.sql import functions as dbf  # type: ignore[import-not-found]
