@@ -48,18 +48,6 @@ nox: ## run nox session
 	@uv run nox
 	@echo "$(GREEN)All nox checks finishe!$(ENDC)"
 
-
-build: ## build wheel file
-	@echo "$(ORANGE)--- Cleaning Build Artifacts ---$(ENDC)"
-	@rm -rf dist/wheel
-	@echo "$(GREEN)'./dist/wheel' directory removed.$(ENDC)"
-	@echo "$(PURPLE)--- Building Project ---$(ENDC)"
-	@echo "$(BLUE) > Making wheel directory...$(ENDC)"
-	@mkdir -p "dist/wheel"
-	@echo "$(BLUE) > Creating wheel file...$(ENDC)"
-	@uv build --wheel --out-dir dist/wheel
-	@echo "$(GREEN)Build successful! Find the wheel in the './dist/wheel' directory.$(ENDC)"
-
 clean:
 	rm -rf .nox .pytest_cache .ruff_cache __pycache__ dist
 	find . -type d -name __pycache__ -not -path "./.venv/*" -exec rm -rf {} +
