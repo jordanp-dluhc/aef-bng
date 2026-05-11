@@ -296,8 +296,12 @@ def visualise(
     if not parquet_files:
         raise ValueError(f"No .parquet files found in {directory}")
 
-    total_rows = sum(pq.read_metadata(str(f)).num_rows for f in parquet_files)
-    total_rgs = sum(pq.read_metadata(str(f)).num_row_groups for f in parquet_files)
+    total_rows = 0
+    total_rgs = 0
+    for f in parquet_files:
+        metadata = pq.read_metadata(str(f))
+        total_rows += metadata.num_rows
+        total_rgs += metadata.num_row_groups
     logger.info(
         "Opened dataset: %d file(s), %d row groups, %s rows",
         len(parquet_files),
