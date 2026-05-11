@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from unittest.mock import Mock
 
+import geopandas as gpd
 import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+from shapely.geometry import box
 
 from aef_bng.constants import AEF_NUM_BANDS, BNG_RESOLUTION
 from aef_bng.extract import extract_pixels
@@ -18,6 +22,7 @@ from aef_bng.writer import (
     _build_wkb_column,
     _compute_partitions,
     prepare_table_for_write,
+    read_output,
     write_geoparquet,
 )
 
@@ -258,3 +263,39 @@ class TestWriteGeoparquetLegacy:
             poly = wkb_loads(wkb_col[i].as_py())
             assert poly.geom_type == "Polygon"
             assert abs(poly.area - 100.0) < 1e-6
+
+
+@pytest.mark.unit
+class TestReadOutput:
+    """Tests for read_output."""
+
+    def test_uses_from_arrow_without_pylist_materialisation(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        """Geometry conversion uses GeoSeries.from_arrow when available."""
+        geom_col = Mock()
+        selected = Mock()
+        selected.to_pandas.return_value = pd.DataFrame({"year": [2024]})
+
+        table = Mock()
+        table.column.return_value = geom_col
+        table.schema.names = ["year", "geometry"]
+        table.select.return_value = selected
+
+        read_result = Mock()
+        read_result.to_arrow.return_value = table
+        gpio_read = Mock(return_value=read_result)
+        monkeypatch.setattr("aef_bng.writer.gpio.read", gpio_read)
+
+        from_arrow = Mock(return_value=gpd.GeoSeries([box(0, 0, 1, 1)], crs=27700))
+        monkeypatch.setattr(gpd.GeoSeries, "from_arrow", from_arrow)
+
+        gdf = read_output(tmp_path / "test.parquet", columns=["year"])
+
+        gpio_read.assert_called_once()
+        from_arrow.assert_called_once_with(geom_col)
+        geom_col.to_pylist.assert_not_called()
+        assert list(gdf.columns) == ["year", "geometry"]
+        assert gdf.crs and gdf.crs.to_epsg() == 27700

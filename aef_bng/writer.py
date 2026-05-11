@@ -354,9 +354,9 @@ def read_output(
     geopandas raises ``ValueError: Missing geo metadata``.
 
     This function uses ``geoparquet_io`` to read the file (DuckDB-backed, so
-    it handles GeoParquet 2.0 natively), then extracts WKB bytes via
-    ``to_pylist()`` and reconstructs the GeoDataFrame with
-    ``GeoSeries.from_wkb``.
+    it handles GeoParquet 2.0 natively), then reconstructs geometry directly
+    from the Arrow column via ``GeoSeries.from_arrow`` when available (with a
+    compatibility fallback to ``GeoSeries.from_wkb``).
 
     When ``bbox`` is provided it is pushed down to the parquet reader as a
     pyarrow filter expression on the ``bbox`` struct column
@@ -391,8 +391,13 @@ def read_output(
 
     table = gpio.read(str(path), columns=load_cols, filters=filters).to_arrow()
 
-    geom_bytes = table.column("geometry").to_pylist()
-    geom_series = gpd.GeoSeries.from_wkb(geom_bytes, crs=27700)
+    geom_col = table.column("geometry")
+    if hasattr(gpd.GeoSeries, "from_arrow"):
+        geom_series = gpd.GeoSeries.from_arrow(geom_col)
+        if geom_series.crs is None:
+            geom_series = geom_series.set_crs(27700)
+    else:
+        geom_series = gpd.GeoSeries.from_wkb(geom_col.to_pylist(), crs=27700)
 
     keep = [n for n in table.schema.names if n != "geometry"]
     df = table.select(keep).to_pandas()
