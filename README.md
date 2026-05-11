@@ -84,7 +84,7 @@ memory (~8 MB) to prevent data accumulation in RAM.
 
 #### Spark/Databricks
 
-Will distribute across CPU acores available on the Spark cluster. Each task will read a 10km chunk and append it to a Unity Catalog Delta table.
+Will distribute across CPU cores available on the Spark cluster. Each task will read a 10km chunk and append it to a Unity Catalog Delta table.
 
 Liquid clustering on `(year, bng_ref)` is applied for temporal and spatial queries, but if it is a managed table _I think_ you can apply `CLUSTER BY AUTO` to allow Databricks to determine optimisations by query patterns.
 
