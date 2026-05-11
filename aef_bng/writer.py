@@ -282,7 +282,8 @@ def optimise_output(raw_path: Path, output_dir: Path, total_rows: int) -> None:
     if partitions <= 1:
         # No partitioning needed — just move the sorted file to output
         final_path = output_dir / sorted_path.name
-        sorted_path.rename(final_path)
+        if sorted_path != final_path:
+            sorted_path.rename(final_path)
         logger.info("Single file (no partition needed): %d rows -> %s", total_rows, final_path)
     else:
         rows_per_file = total_rows // partitions
