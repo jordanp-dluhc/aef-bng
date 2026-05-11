@@ -73,7 +73,7 @@ Both modes use the same flat embedding representation of 64 individual `TINYINT`
 Two-phase write strategy using [`geoparquet-io`](https://github.com/cholmes/geoparquet-io):
 
 1. **Stream**: PyArrow `ParquetWriter` appends chunks to a raw temp file with O(row_group)
-memory (~8 MB) to prevent data accumlation in RAM.
+memory (~8 MB) to prevent data accumulation in RAM.
 2. **Optimise**: `gpio` CLI sorts and partitions:
    - Hilbert curve spatial sorting for optimal row locality within files
    - KD-tree spatial partitioning for uniform distribution across files targeting ~15M rows/file
