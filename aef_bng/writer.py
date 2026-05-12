@@ -280,10 +280,11 @@ def optimise_output(raw_path: Path, output_dir: Path, total_rows: int) -> None:
     partitions = _compute_partitions(total_rows)
 
     if partitions <= 1:
-        # No partitioning needed — just move the sorted file to output
-        final_path = output_dir / sorted_path.name
+        # No partitioning needed — rename the sorted temp file to a canonical final name
+        final_path = output_dir / "part-0000.parquet"
         if sorted_path != final_path:
-            sorted_path.rename(final_path)
+            final_path.unlink(missing_ok=True)
+            sorted_path.replace(final_path)
         logger.info("Single file (no partition needed): %d rows -> %s", total_rows, final_path)
     else:
         rows_per_file = total_rows // partitions
