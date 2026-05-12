@@ -94,7 +94,7 @@ The pipeline divides Great Britain into 10km BNG grid squares (e.g. `TQ38`). Eac
 
 ## Installation
 
-Clone the locally, Makefile available for convenience for installing all required & optional dependencies:
+Clone the repo locally; the Makefile is available for conveniently installing all required and optional dependencies:
 
 ```bash
 git clone https://github.com/jordanp-dluhc/aef-bng
