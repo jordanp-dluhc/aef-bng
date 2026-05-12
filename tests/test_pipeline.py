@@ -183,7 +183,7 @@ class TestProcessYear:
                 raise RuntimeError("chunk failed")
             try:
                 # Wait forever so this task only exits via cancellation.
-                await asyncio.Event().wait()
+                await asyncio.sleep(float("inf"))
             except asyncio.CancelledError:
                 cancelled += 1
                 raise
