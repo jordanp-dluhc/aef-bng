@@ -101,7 +101,13 @@ async def process_chunk(
     return extract_pixels(merged, chunk, year)
 
 
-async def process_year(config: AEFBNGConfig, year: int, index: AEFBNGIndex) -> int:
+def _raise_exception(exc: Exception) -> None:
+    raise exc
+
+
+async def process_year(  # noqa: C901
+    config: AEFBNGConfig, year: int, index: AEFBNGIndex
+) -> int:
     """Process all chunks for a single year.
 
     Phase 1: Streams chunk tables to a raw temp parquet file.
@@ -120,26 +126,55 @@ async def process_year(config: AEFBNGConfig, year: int, index: AEFBNGIndex) -> i
     grid = BNGOutputGrid(config.bounds, config.chunk_size)
     chunks = list(grid.enumerate_chunks())
 
-    semaphore = asyncio.Semaphore(config.max_workers)
     output_dir = Path(config.output_path) / str(year)
     raw_path = output_dir / "_raw.parquet"
 
-    async def _bounded(chunk: ChunkSpec) -> pa.Table | None:
-        async with semaphore:
-            return await process_chunk(chunk, year, index, config)
-
     # Phase 1: Stream chunks to raw parquet (concurrent reads, sequential writes)
     writer = StreamingParquetWriter(raw_path)
+    pending: set[asyncio.Task[pa.Table | None]] = set()
+    chunk_iter = iter(chunks)
 
-    tasks = [asyncio.create_task(_bounded(c)) for c in chunks]
-    with tqdm(total=len(tasks), desc=f"Year {year}", unit="chunk") as pbar:
-        for coro in asyncio.as_completed(tasks):
-            table = await coro
-            if table is not None and table.num_rows > 0:
-                writer.write_table(table)
-            pbar.update(1)
+    def _schedule_next() -> bool:
+        try:
+            chunk = next(chunk_iter)
+        except StopIteration:
+            return False
+        pending.add(asyncio.create_task(process_chunk(chunk, year, index, config)))
+        return True
 
-    writer.close()
+    for _ in range(min(config.max_workers, len(chunks))):
+        _schedule_next()
+
+    try:
+        with tqdm(total=len(chunks), desc=f"Year {year}", unit="chunk") as pbar:
+            while pending:
+                done, pending = await asyncio.wait(
+                    pending, return_when=asyncio.FIRST_COMPLETED
+                )
+                error: Exception | None = None
+                for task in done:
+                    try:
+                        table = task.result()
+                    except Exception as exc:
+                        if error is None:
+                            error = exc
+                    else:
+                        if table is not None and table.num_rows > 0:
+                            writer.write_table(table)
+                        _schedule_next()
+                    finally:
+                        pbar.update(1)
+                if error is not None:
+                    _raise_exception(error)
+    except Exception:
+        for task in pending:
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+        raise
+    finally:
+        writer.close()
+
     total_rows = writer.total_rows
 
     if total_rows == 0:
