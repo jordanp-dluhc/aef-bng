@@ -104,6 +104,25 @@ Both modes use the same flat embedding representation of 64 individual `TINYINT`
 |   `northing`  |     `INTEGER`   |            BNG northing of the lower-left cell corner (metres)        |
 |   `geometry`  |     `GEOMETRY`  |                     10m BNG cell polygon (EPSG:27700)                 |
 
+#### Local
+
+Two-phase write strategy using [`geoparquet-io`](https://github.com/cholmes/geoparquet-io):
+
+1. **Stream**: PyArrow `ParquetWriter` appends chunks to a raw temp file with O(row_group)
+memory (~8 MB) to prevent data accumulation in RAM.
+2. **Optimise**: `gpio` CLI sorts and partitions:
+   - Hilbert curve spatial sorting for optimal row locality within files
+   - KD-tree spatial partitioning for uniform distribution across files targeting ~15M rows/file
+   (~1 GB). Partition count is the nearest power of 2: e.g. 195M rows → 16 files × 12.2M rows each.
+   - GeoParquet 2.0 with `geo_bbox` row group statistics enabling spatial filter pushdown
+   - 100k row groups
+   - Zstd compression
+
+#### Spark/Databricks
+
+Will distribute across CPU cores available on the Spark cluster. Each task will read a 10km chunk and append it to a Unity Catalog Delta table.
+
+Liquid clustering on `(year, bng_ref)` is applied for temporal and spatial queries, but if it is a managed table _I think_ you can apply `CLUSTER BY AUTO` to allow Databricks to determine optimisations by query patterns.
 
 ### Processing units
 
@@ -111,7 +130,7 @@ The pipeline divides Great Britain into 10km BNG grid squares (e.g. `TQ38`). Eac
 
 ## Installation
 
-Clone the repo locally, Makefile available for convenience for installing required & optional dependencies:
+Clone the repo locally; the Makefile is available for conveniently installing all required and optional dependencies:
 
 ```bash
 git clone https://github.com/jordanp-dluhc/aef-bng

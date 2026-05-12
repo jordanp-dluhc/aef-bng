@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import numpy as np
@@ -161,6 +162,45 @@ class TestProcessYear:
         assert str(call_args[0][0]).endswith("_raw.parquet")
         assert str(call_args[0][1]).endswith("2024")
         assert call_args[0][2] == 1_000_000
+
+    @pytest.mark.asyncio
+    async def test_closes_writer_on_chunk_failure(self, tmp_path) -> None:
+        """process_year closes writer and cancels in-flight work when a chunk fails."""
+        config = AEFBNGConfig(
+            years=[2024],
+            bounds=(530_000, 180_000, 550_000, 200_000),
+            output_path=str(tmp_path),
+            max_workers=2,
+        )
+        index = MagicMock()
+        calls = 0
+        cancelled = 0
+
+        async def _fail_then_wait(*_args, **_kwargs):
+            nonlocal calls, cancelled
+            calls += 1
+            if calls == 1:
+                raise RuntimeError("chunk failed")
+            try:
+                # Wait forever so this task only exits via cancellation.
+                await asyncio.sleep(float("inf"))
+            except asyncio.CancelledError:
+                cancelled += 1
+                raise
+            return None
+
+        writer = MagicMock()
+        writer.total_rows = 0
+        with (
+            patch("aef_bng.pipeline.process_chunk", side_effect=_fail_then_wait),
+            patch("aef_bng.pipeline.StreamingParquetWriter", return_value=writer),
+            pytest.raises(RuntimeError, match="chunk failed"),
+        ):
+            await process_year(config, 2024, index)
+
+        writer.close.assert_called_once()
+        assert calls == config.max_workers
+        assert cancelled >= 1
 
 
 @pytest.mark.unit

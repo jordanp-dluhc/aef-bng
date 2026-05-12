@@ -234,7 +234,7 @@ def _compute_partitions(total_rows: int) -> int:
         return 1
 
     ideal = total_rows / _TARGET_ROWS_PER_FILE
-    exponent = round(math.log2(ideal))
+    exponent = int(math.floor(math.log2(ideal) + 0.5))
     return max(1, 2**exponent)
 
 
@@ -280,9 +280,11 @@ def optimise_output(raw_path: Path, output_dir: Path, total_rows: int) -> None:
     partitions = _compute_partitions(total_rows)
 
     if partitions <= 1:
-        # No partitioning needed — just move the sorted file to output
-        final_path = output_dir / sorted_path.name
-        sorted_path.rename(final_path)
+        # No partitioning needed — rename the sorted temp file to a canonical final name
+        final_path = output_dir / "part-0000.parquet"
+        if sorted_path != final_path:
+            final_path.unlink(missing_ok=True)
+            sorted_path.replace(final_path)
         logger.info("Single file (no partition needed): %d rows -> %s", total_rows, final_path)
     else:
         rows_per_file = total_rows // partitions
@@ -353,9 +355,9 @@ def read_output(
     geopandas raises ``ValueError: Missing geo metadata``.
 
     This function uses ``geoparquet_io`` to read the file (DuckDB-backed, so
-    it handles GeoParquet 2.0 natively), then extracts WKB bytes via
-    ``to_pylist()`` and reconstructs the GeoDataFrame with
-    ``GeoSeries.from_wkb``.
+    it handles GeoParquet 2.0 natively), then reconstructs geometry directly
+    from the Arrow column via ``GeoSeries.from_arrow`` when available (with a
+    compatibility fallback to ``GeoSeries.from_wkb``).
 
     When ``bbox`` is provided it is pushed down to the parquet reader as a
     pyarrow filter expression on the ``bbox`` struct column
@@ -390,8 +392,13 @@ def read_output(
 
     table = gpio.read(str(path), columns=load_cols, filters=filters).to_arrow()
 
-    geom_bytes = table.column("geometry").to_pylist()
-    geom_series = gpd.GeoSeries.from_wkb(geom_bytes, crs=27700)
+    geom_col = table.column("geometry")
+    if hasattr(gpd.GeoSeries, "from_arrow"):
+        geom_series = gpd.GeoSeries.from_arrow(geom_col)
+        if geom_series.crs is None:
+            geom_series = geom_series.set_crs(27700)
+    else:
+        geom_series = gpd.GeoSeries.from_wkb(geom_col.to_pylist(), crs=27700)
 
     keep = [n for n in table.schema.names if n != "geometry"]
     df = table.select(keep).to_pandas()
