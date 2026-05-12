@@ -45,7 +45,7 @@ test: ## test the code with pytest
 nox: ## run nox session
 	@echo "$(PURPLE)--- Running Nox ---$(ENDC)"
 	@echo "$(BLUE) > Running noxfile...$(ENDC)"
-	@uvx nox
+	@uv run nox
 	@echo "$(GREEN)All nox checks finishe!$(ENDC)"
 
 # Clean

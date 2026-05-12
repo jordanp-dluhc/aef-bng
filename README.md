@@ -3,7 +3,7 @@
 Reproject [Alpha Earth Foundation embeddings](https://deepmind.google/blog/alphaearth-foundations-helps-map-our-planet-in-unprecedented-detail/) from their native UTM grids onto the British National Grid (EPSG:27700) in Delta or GeoParquet format.
 
 <p align="center">
-  <img src="docs/london-example.jpg" alt="London Example" width=75%>
+  <img src="docs/london-rgb-pca-composite.jpg" alt="London Example" width=99%>
 </p>
 <p align="center"><em>Alpha Earth embeddings for London, UK (2025).</a></em></p>
 
@@ -11,9 +11,9 @@ Reproject [Alpha Earth Foundation embeddings](https://deepmind.google/blog/alpha
 
 Google Deepmind publishes the AEF embeddings dataset as an annual, global, 10m-resolution embedding layers as multiband Cloud Optimised GeoTIFFs. These are available via Google Cloud Storage or [Source Cooperative](https://source.coop/repositories/tge-labs/aef); this project solely uses the latter.
 
-I regularly use Databricks which _currently_ does not support native raster workflows, whereas they do have great native support for vector processing. My work also primarily covers Great Britain, so I wanted something indexed to the British National Grid. As such, I needed a simple way to work with Alpha Earth embeddings in a tabular format locally (via GeoParquet) or on Databricks (via Delta).
-
 Other projects exist for creating virtual Zarr files on-the-fly ([`aef-loader`](https://github.com/jakenotjay/aef-loader)) or premade mosaics ([`aef-mosaic`](https://source.coop/tge-labs/aef-mosaic)). These are amazing and I would strongly recommend using them in the first instance, particularly for raster-based workflows.
+
+I regularly use Databricks which _currently_ does not support native raster workflows, whereas they do have great native support for vector processing. My work also primarily covers Great Britain, so I wanted something indexed to the British National Grid. As such, I needed a simple way to work with Alpha Earth embeddings in a tabular format locally (via GeoParquet) or on Databricks (via Delta).
 
 This work is currently a proof-of-concept to serve specific niche use case in getting Alpha Earth data in a tabular format on Databricks.
 
@@ -49,59 +49,66 @@ This work is currently a proof-of-concept to serve specific niche use case in ge
 
 The AEF tile index is a [STAC GeoParquet](https://stac-utils.github.io/stac-geoparquet/latest/) file on Source Cooperative S3. The pipeline queries it directly with predicate pushdown on `bbox` and `datetime` columns — only the rows overlapping the requested BNG extent and years are downloaded. Tiles outside the BNG grid are filtered out with spatial predicate pushdown filters.
 
+### COG orientation
+
+AEF COGs are "bottom-up": the origin is at the bottom-left corner and the y-resolution is positive, which is the inverse of a standard top-down COG. [Source Cooperative's README](https://source.coop/tge-labs/aef#object-object) recommends using the companion `.vrt` files to correct this for software that assumes standard row ordering.
+
+This pipeline reads the raw `.tiff` files directly and does not need the VRTs. `async_geotiff` reads the affine transform from the TIFF tags and returns it with the data, and `rasterio.warp.reproject` uses that transform to correctly map pixel coordinates to world coordinates regardless of y-scale sign. The windowed read helper in `reader.py` also handles this explicitly by transforming all four geographic corners to pixel space (rather than assuming two corners suffice), which is necessary to avoid a negative window height when y-resolution is positive.
+
 ### Output schemas
 
-Both modes use the same flat embedding representation — 64 individual `TINYINT` columns (`A00`..`A63`).
+Both modes use the same flat embedding representation of 64 individual `TINYINT` columns (`A00`..`A63`).
 
 |     Column    |       Type      |                             Description                               |
 |---------------|-----------------|-----------------------------------------------------------------------|
 |   `bng_ref`   |     `STRING`    |           10-character 10m BNG reference (e.g. `TQ30008000`)          |
 |     `year`    |     `SMALLINT`  |                       Year of the AEF embeddings                      |
 | `A00`..`A63`  |     `TINYINT`   |                 64 individual int8 embedding band columns             |
+|   `easting`   |     `INTEGER`   |             BNG easting of the lower-left cell corner (metres)        |
+|   `northing`  |     `INTEGER`   |            BNG northing of the lower-left cell corner (metres)        |
 |   `geometry`  |     `GEOMETRY`  |                     10m BNG cell polygon (EPSG:27700)                 |
 
 #### Local
 
-Writes GeoParquet per 10km chunk.
+Two-phase write strategy using [`geoparquet-io`](https://github.com/cholmes/geoparquet-io):
 
-GeoParquet files are written via [`geoparquet-io`](https://github.com/cholmes/geoparquet-io), with `shapely` for fast vectorised geometry construction. All spatial optimisations are delegated to geoparquet-io:
-
-- **Bbox covering column** — computed by `add_bbox()` via DuckDB spatial
-- **Hilbert curve spatial sorting** — via `sort_hilbert()` for optimal row-group locality
-- **KD-tree spatial partitioning** — for datasets above ~5M rows, `partition_by_kdtree()` creates spatially-balanced files; smaller datasets write a single file
-- Zstd compression, ~100k row groups
+1. **Stream**: PyArrow `ParquetWriter` appends chunks to a raw temp file with O(row_group)
+memory (~8 MB) to prevent data accumulation in RAM.
+2. **Optimise**: `gpio` CLI sorts and partitions:
+   - Hilbert curve spatial sorting for optimal row locality within files
+   - KD-tree spatial partitioning for uniform distribution across files targeting ~15M rows/file
+   (~1 GB). Partition count is the nearest power of 2: e.g. 195M rows → 16 files × 12.2M rows each.
+   - GeoParquet 2.0 with `geo_bbox` row group statistics enabling spatial filter pushdown
+   - 100k row groups
+   - Zstd compression
 
 #### Spark/Databricks
 
-Writes to a Unity Catalog Delta table.
+Will distribute across CPU cores available on the Spark cluster. Each task will read a 10km chunk and append it to a Unity Catalog Delta table.
 
-Liquid clustering on `(year, bng_ref)` is applied for efficient temporal and spatial queries, but if it is a managed table _I think_ you can apply `CLUSTER BY AUTO` to allow Databricks to determine optimisations by query patterns.
+Liquid clustering on `(year, bng_ref)` is applied for temporal and spatial queries, but if it is a managed table _I think_ you can apply `CLUSTER BY AUTO` to allow Databricks to determine optimisations by query patterns.
 
 ### Processing units
 
-The pipeline divides Great Britain into **10km BNG grid squares** (e.g. `TQ38`). Each square is 1000x1000 pixels at 10m resolution — up to 1M rows per chunk. These are internal processing units and do not appear in the output.
+The pipeline divides Great Britain into 10km BNG grid squares (e.g. `TQ38`). Each square is 1000x1000 pixels at 10m resolution — up to 1M rows per chunk. These are internal processing units and do not appear in the output.
 
 ## Installation
 
-A Makefile has been included for ease of use, install all project dependency groups, pre-commit etc.:
+Clone the repo locally; the Makefile is available for conveniently installing all required and optional dependencies:
 
 ```bash
+git clone https://github.com/jordanp-dluhc/aef-bng
+cd aef-bng
 make install
 ```
 
-If you want to install required dependencies:
+If you only want to install the required dependencies:
 
 ```bash
 uv sync
 ```
 
-For running local notebooks:
-
-```bash
-uv sync --extra notebooks
-```
-
-For the visualisation CLI:
+For the CLI command to generate visualisations of partitioned data:
 
 ```bash
 uv sync --extra viz
@@ -111,50 +118,55 @@ uv sync --extra viz
 
 ### Databricks
 
-See `notebooks/aef_bng_databricks.ipynb` for a complete walkthrough covering installation, configuration, running the pipeline, verification, and query examples.
+See [`notebooks/aef_bng_databricks.ipynb`](https://github.com/jordanp-dluhc/aef-bng/blob/main/notebooks/aef_bng_databricks.ipynb) for a walkthrough covering installation, configuration, running the pipeline, verification, and query examples.
 
-This still needs implementing fully so is general proof-of-concept workflow.
+This still needs implementing fully so is currently a general proof-of-concept workflow.
 
-You could also execute this using [`databricks-connect`](https://pypi.org/project/databricks-connect/) and the [Databricks VS Code extension](https://docs.databricks.com/aws/en/dev-tools/vscode-ext/) for running code locally via a Databricks cluster.
+You could potentially execute this using [`databricks-connect`](https://pypi.org/project/databricks-connect/) and the [Databricks VS Code extension](https://docs.databricks.com/aws/en/dev-tools/vscode-ext/) for running code locally via a Databricks cluster.
 
 ### CLI (local mode)
 
-Simplest approach for now.
+See [`notebooks/aef_bng_local_example.ipynb`](https://github.com/jordanp-dluhc/aef-bng/blob/main/notebooks/aef_bng_local_example.ipynb).
 
 ```bash
 # Process a single year for all of GB (uses default BNG bounds)
 aef-bng process --year 2025 \
     --output ./aef
 
-# Process specific bounds (Central London area) for a single year
-aef-bng process \
-    --year 2025 \
-    --bounds 521722 171089 540290 187123 \
-    --output ./london_aef
-
-# Process specific bounds for multiple years
+# Process specific bounds for multiple years (central London)
 aef-bng process \
     --year 2024 --year 2025 \
     --bounds 521722 171089 540290 187123 \
     --output ./london_aef
+
+# Larger bounds with more concurrent workers
+aef-bng process \
+    --year 2025 \
+    --bounds 508848 163362 553002 196746 \
+    --workers 8 \
+    --output ./london_aef
 ```
+
+The pipeline streams chunks to disk as they are processed (O(row_group) memory), then optimises the output with Hilbert sorting and KD-tree partitioning via `geoparquet-io`.
+
+It also uses `asyncio` under the hood for processing individual 10km chunks.
 
 ### Visualising output
 
 The `visualise` command inspects a GeoParquet output directory and produces two files:
 
-- **`spatial_partitioning.png`** — static plot showing file extents and row-group extents on a basemap
-- **`spatial_partitioning.html`** — interactive [`lonboard`](https://developmentseed.org/lonboard/latest/) map coloured by file, openable in any browser
+- **`spatial_partitioning.png`**: static plot showing file extents and row-group extents on a basemap
+- **`spatial_partitioning.html`**: interactive [`lonboard`](https://developmentseed.org/lonboard/latest/) map coloured by file, openable in any browser
 
 ```bash
 # Custom output paths
 aef-bng visualise london_aef/2025 \
-    --png london_aef/2025/london_partitioning.png \
-    --html london_aef/2025/london_partitioning.html
+    --png london_aef/london_partitioning.png \
+    --html london_aef/london_partitioning.html
 ```
 
 <p align="center">
-  <img src="docs/london-example-partitions.jpg" alt="London partition example" width=95%>
+  <img src="docs/london-example-partitions.png" alt="London partition example" width=95%>
 </p>
 <p align="center"><em>Example local GeoParquet partitions.</a></em></p>
 
@@ -195,7 +207,7 @@ make nox
 Or individually:
 
 ```bash
-uvx nox
+uv run nox
 ```
 
 ## Architecture
@@ -209,13 +221,13 @@ aef_bng/
   extract.py      Vectorised BNG reference generation, WKB geometry, Arrow table extraction
   grid.py         BNG output grid enumeration and ChunkSpec
   index.py        AEF STAC GeoParquet index (direct S3 query with predicate pushdown)
-  pipeline.py     Local async pipeline orchestration
+  pipeline.py     Local async pipeline orchestration (stream + optimise)
   reader.py       Async COG reading via obstore + async-geotiff
   reproject.py    UTM -> BNG reprojection and first-valid tile merging
   spark.py        Distributed Spark pipeline (mapInArrow + Unity Catalog)
   types.py        BoundingBox with CRS reprojection
   visualise.py    Spatial partitioning visualiser (static PNG + lonboard HTML map)
-  writer.py       GeoParquet writer (geoparquet-io: bbox, Hilbert sort, KD-tree partition)
+  writer.py       Streaming writer + gpio optimization (Hilbert sort, KD-tree, GeoParquet 2.0)
 ```
 
 ## Further documentation

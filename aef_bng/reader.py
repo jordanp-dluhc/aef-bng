@@ -2,6 +2,23 @@
 
 Reads AEF Cloud Optimised GeoTIFF tiles from Source Cooperative, optionally with windowed reads to
 limit data transfer.
+
+Note on AEF COG orientation
+----------------------------
+AEF COGs are "bottom-up": the origin is the bottom-left corner, the y-resolution is positive, and
+image blocks are ordered from bottom-left to top-right. This is the inverse of a standard
+("top-down") COG where the origin is the top-left and y-resolution is negative.
+
+Source Cooperative's README advises using the companion ``.vrt`` files to correct this on-the-fly
+for software that assumes standard ordering. This pipeline does **not** need the VRTs because:
+
+1. ``async_geotiff`` reads the affine transform from the TIFF tags and returns it alongside the
+   data, correctly reflecting the positive y-scale.
+2. ``rasterio.warp.reproject`` uses the affine transform to map pixel coordinates to world
+   coordinates, so it handles positive y-scale natively.
+3. ``_bounds_to_window`` computes the pixel window by transforming all four geographic corners
+   (not just two) and taking the actual min/max of the resulting row/column values, which is
+   correct for both positive and negative y-scale transforms.
 """
 
 from __future__ import annotations
@@ -33,8 +50,10 @@ def _bounds_to_window(
 ) -> Window | None:
     """Convert geographic bounds to a pixel Window.
 
-    Handles both positive and negative y-scale transforms by computing
-    pixel coordinates for all four corners and taking the actual min/max.
+    Handles both positive and negative y-scale transforms by computing pixel
+    coordinates for all four corners and taking the actual min/max. AEF COGs
+    have a positive y-scale (bottom-up origin), so a two-corner approach would
+    produce a negative window height; transforming all four corners is required.
 
     Args:
         bounds: (minx, miny, maxx, maxy) in the tile's native CRS.

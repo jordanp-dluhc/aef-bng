@@ -22,21 +22,16 @@ dependencies = [
     { name = "osbng" },
     { name = "pyarrow" },
     { name = "pyproj" },
-    { name = "pyspark" },
     { name = "rasterio" },
     { name = "tqdm" },
 ]
 
 [package.optional-dependencies]
-notebooks = [
-    { name = "contextily" },
-    { name = "ipykernel" },
-    { name = "matplotlib" },
-    { name = "matplotlib-inline" },
+spark = [
+    { name = "pyspark" },
 ]
 viz = [
     { name = "contextily" },
-    { name = "geoarrow-rust-io" },
     { name = "lonboard" },
     { name = "matplotlib" },
 ]
@@ -45,6 +40,7 @@ viz = [
 dev = [
     { name = "coverage" },
     { name = "hypothesis" },
+    { name = "ipykernel" },
     { name = "nox" },
     { name = "pre-commit" },
     { name = "pyrefly" },
@@ -59,32 +55,28 @@ dev = [
 requires-dist = [
     { name = "async-geotiff", specifier = ">=0.4.0" },
     { name = "click", specifier = ">=8.0" },
-    { name = "contextily", marker = "extra == 'notebooks'", specifier = ">=1.7.0" },
     { name = "contextily", marker = "extra == 'viz'", specifier = ">=1.7.0" },
     { name = "fsspec", specifier = ">=2026.3.0" },
-    { name = "geoarrow-rust-io", marker = "extra == 'viz'", specifier = ">=0.4.0" },
     { name = "geopandas", specifier = ">=0.14.0" },
     { name = "geoparquet-io", specifier = ">=1.0.1" },
-    { name = "ipykernel", marker = "extra == 'notebooks'", specifier = ">=7.2.0" },
     { name = "lonboard", marker = "extra == 'viz'", specifier = ">=0.10.0" },
-    { name = "matplotlib", marker = "extra == 'notebooks'", specifier = ">=3.10.8" },
     { name = "matplotlib", marker = "extra == 'viz'", specifier = ">=3.10.8" },
-    { name = "matplotlib-inline", marker = "extra == 'notebooks'", specifier = ">=0.2.1" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "obstore", specifier = ">=0.4.0" },
     { name = "osbng", specifier = ">=0.5.0" },
     { name = "pyarrow", specifier = ">=15.0.0" },
     { name = "pyproj", specifier = ">=3.6.0" },
-    { name = "pyspark", specifier = ">=4.0.0" },
+    { name = "pyspark", marker = "extra == 'spark'", specifier = ">=4.0.0" },
     { name = "rasterio", specifier = ">=1.4.0" },
     { name = "tqdm", specifier = ">=4.60.0" },
 ]
-provides-extras = ["notebooks", "viz"]
+provides-extras = ["spark", "viz"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "coverage", specifier = ">=7.8.0" },
     { name = "hypothesis", specifier = ">=6.152.1" },
+    { name = "ipykernel", specifier = ">=7.2.0" },
     { name = "nox", specifier = ">=2025.5.1" },
     { name = "pre-commit", specifier = ">=4.2.0" },
     { name = "pyrefly", specifier = ">=0.61.0" },
@@ -973,33 +965,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/a9/fb/c1e92716ee5aa00d48b650f0cb43220a1bf4088c8d572dfc21d400b16723/geoarrow_rust_core-0.6.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:5e505312f2761393fe5158242f3f2d77e9daa5cca63badd8d66e6d1d69fc17bf", size = 3913672, upload-time = "2025-11-21T01:49:19.873Z" },
     { url = "https://files.pythonhosted.org/packages/f8/6f/ef47f6070c5d5cf0d061d5f5ba95aed7e895e4720a784b84c911c0209fc0/geoarrow_rust_core-0.6.1-cp313-cp313-manylinux_2_5_i686.manylinux1_i686.whl", hash = "sha256:a732e58549108df8267ab72fa6cc7c54e5a9e30b818d8d869e301a9de9d3029e", size = 4313496, upload-time = "2025-11-21T01:49:04.953Z" },
     { url = "https://files.pythonhosted.org/packages/3c/ac/2696b979623ea02129e342f8820c89d03fa5a253a913ad00b588d6dd2948/geoarrow_rust_core-0.6.1-cp313-cp313-win_amd64.whl", hash = "sha256:9e1d6492b1388b9d5ae898728838ada78dbf2340d2e9dd25ad3df6ccdd058813", size = 3318780, upload-time = "2025-11-21T01:50:18.928Z" },
-]
-
-[[package]]
-name = "geoarrow-rust-io"
-version = "0.6.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "arro3-core" },
-    { name = "pyproj" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/6d/ee/7c841b38c9eaedbb830e1eab077c2d2f86e69f7bef3327167dd142a0d950/geoarrow_rust_io-0.6.1-cp312-cp312-macosx_10_12_x86_64.whl", hash = "sha256:ee3386abfe1302b761a8436b27d45e040fc9f429820c9421793cf2575c90d3f5", size = 9761654, upload-time = "2025-11-21T02:11:26.598Z" },
-    { url = "https://files.pythonhosted.org/packages/3c/d2/aa36ab40563d95562f75e707fca2ae8e92ed5adbe77517d7b8e12ebfda44/geoarrow_rust_io-0.6.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:bc1449699d41db7c88e85eb3d8248773ad06613094c31ffdcc1e2d08aea8cc58", size = 9299644, upload-time = "2025-11-21T02:11:17.454Z" },
-    { url = "https://files.pythonhosted.org/packages/3e/ef/dd9fa56248048dd5d971a54272496731d464ecd19833b9336ec0c1bd6dc9/geoarrow_rust_io-0.6.1-cp312-cp312-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:182c57b481fefe2a5cd0981a9233aa501445ed8353d907189574996b571ebc8e", size = 10307787, upload-time = "2025-11-21T02:10:29.713Z" },
-    { url = "https://files.pythonhosted.org/packages/38/d6/211c7d5534a346a91033b29cd24e279956f48ec5497bb0710811121f9be0/geoarrow_rust_io-0.6.1-cp312-cp312-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:766e319cd2d12dcb8c00fd8e37c5577667fe916ca79ad3378c8f0f30318fb886", size = 11291384, upload-time = "2025-11-21T02:10:53.939Z" },
-    { url = "https://files.pythonhosted.org/packages/91/d0/6aefa98a808910645d96d366bde1c72bd0ccda707ec1f0a46cdbfb8c83fd/geoarrow_rust_io-0.6.1-cp312-cp312-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:15540b29e18d43ef38b22a2451c5ac0bbd9b8e4c16493ea799bf800c7624a70f", size = 13299716, upload-time = "2025-11-21T02:10:41.88Z" },
-    { url = "https://files.pythonhosted.org/packages/16/94/dfbfd2af284313370b1664c204afa943ce31ad5b711dd2e42a464816fb20/geoarrow_rust_io-0.6.1-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:f5d39dadd0faaa7fe95314f22c4aab79eda0ea6b072a331157571430206e4d9e", size = 10499797, upload-time = "2025-11-21T02:11:05.989Z" },
-    { url = "https://files.pythonhosted.org/packages/b6/8a/c0e851de7f492ab10640ab30b58caabe19945cb009c1cdad9801f7620153/geoarrow_rust_io-0.6.1-cp312-cp312-manylinux_2_28_aarch64.whl", hash = "sha256:72112ec449f5dff041736ab1010f4908bb0e3a50785be6199ec9753d8d35b3d1", size = 10398502, upload-time = "2025-11-21T02:10:15.766Z" },
-    { url = "https://files.pythonhosted.org/packages/d7/bd/8eb48f63a6e3dffff5cb0e9f06ec80aada0a8fa38642b88ea2d4db85e7d3/geoarrow_rust_io-0.6.1-cp312-cp312-win_amd64.whl", hash = "sha256:132dcbff42fd6f6f2b92738cf7590b9dce204fbdaad4badb1717a1edf651c099", size = 8989856, upload-time = "2025-11-21T02:11:35.563Z" },
-    { url = "https://files.pythonhosted.org/packages/e9/2f/805b1b899543b71190bb7f3ee4a04c7319b62a3b17b48f0d0890a63992fa/geoarrow_rust_io-0.6.1-cp313-cp313-macosx_10_12_x86_64.whl", hash = "sha256:2f678fb0cf628236f55ec0b910f0a18edaf687487e135e3a7917afb413553cb8", size = 9761553, upload-time = "2025-11-21T02:11:28.377Z" },
-    { url = "https://files.pythonhosted.org/packages/37/13/aaa2be1f840254a7c33f747653400bb22d4a3afbff7dbacc754d55af5ef0/geoarrow_rust_io-0.6.1-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:7f1ec8c4b869de9dc7e7f9a5704e7bf7b74f8103c79b89c1b9e02340d93387ab", size = 9298952, upload-time = "2025-11-21T02:11:19.489Z" },
-    { url = "https://files.pythonhosted.org/packages/c7/4f/e560d94218fe807cc09bea66d2c37258c819a4a6d48d8785952773cab06a/geoarrow_rust_io-0.6.1-cp313-cp313-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:76d124beea3044827fbc21f428e2fd3c1bb9520e339c43ffd1aa2f4bc5a7a203", size = 10307162, upload-time = "2025-11-21T02:10:31.933Z" },
-    { url = "https://files.pythonhosted.org/packages/45/9c/0b3438534c5c96db4e4a65a33b0b29d374f02dfa127937c6f8213fc34420/geoarrow_rust_io-0.6.1-cp313-cp313-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:00f2de6d1d531236a8fedd8aba7b8b8cfcc8499a4c9e4f2f958175e72617d970", size = 11290399, upload-time = "2025-11-21T02:10:55.991Z" },
-    { url = "https://files.pythonhosted.org/packages/5f/f4/2b1621b1c9775bb0f82834806df553431c17cd788c49bce84a24ce7f5324/geoarrow_rust_io-0.6.1-cp313-cp313-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:ca201a88976e2cb3e6fbe3e26dc20f4882de30c0611ba2ebd117be60a4f30cc4", size = 13297437, upload-time = "2025-11-21T02:10:43.76Z" },
-    { url = "https://files.pythonhosted.org/packages/d0/9a/f406b73d1d149c24f02350c4d4671fa8c901341872ca2841aca1a5bf7296/geoarrow_rust_io-0.6.1-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:080da478ee833c9888c65f48da09f6ef5952f29fd1c4848a0781ecb8ea03a1a9", size = 10499789, upload-time = "2025-11-21T02:11:07.744Z" },
-    { url = "https://files.pythonhosted.org/packages/d2/5a/f6801ec91da5cbc16f37604054d5419c9c69e9e9c2ea753aaf8dec72527f/geoarrow_rust_io-0.6.1-cp313-cp313-manylinux_2_28_aarch64.whl", hash = "sha256:b0d837a8b94c5f7fd7e52dfa44b8a6b088ccf8e07836d6f935c74528a700a596", size = 10399015, upload-time = "2025-11-21T02:10:18.767Z" },
-    { url = "https://files.pythonhosted.org/packages/c4/e3/1868fd3e90d33040555e34b5293b406acc3f12d0bbf9e9a99d7bfd270dba/geoarrow_rust_io-0.6.1-cp313-cp313-win_amd64.whl", hash = "sha256:b2d4211f75893416b6ed26b07d7b94e04360055e902d9158abd65e3859a530f1", size = 8988931, upload-time = "2025-11-21T02:11:37.387Z" },
 ]
 
 [[package]]
