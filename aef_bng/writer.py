@@ -234,7 +234,7 @@ def _compute_partitions(total_rows: int) -> int:
         return 1
 
     ideal = total_rows / _TARGET_ROWS_PER_FILE
-    exponent = round(math.log2(ideal))
+    exponent = int(math.floor(math.log2(ideal) + 0.5))
     return max(1, 2**exponent)
 
 
