@@ -101,10 +101,6 @@ async def process_chunk(
     return extract_pixels(merged, chunk, year)
 
 
-def _raise_exception(exc: Exception) -> None:
-    raise exc
-
-
 async def process_year(  # noqa: C901
     config: AEFBNGConfig, year: int, index: AEFBNGIndex
 ) -> int:
@@ -139,41 +135,53 @@ async def process_year(  # noqa: C901
             chunk = next(chunk_iter)
         except StopIteration:
             return False
-        pending.add(asyncio.create_task(process_chunk(chunk, year, index, config)))
+        pending.add(
+            asyncio.create_task(
+                process_chunk(chunk, year, index, config),
+                name=f"process-{year}-{chunk.bng_10km_ref}",
+            )
+        )
         return True
 
     for _ in range(min(config.max_workers, len(chunks))):
         _schedule_next()
 
+    stream_error: Exception | None = None
+    unexpected_error: Exception | None = None
     try:
         with tqdm(total=len(chunks), desc=f"Year {year}", unit="chunk") as pbar:
             while pending:
                 done, pending = await asyncio.wait(
                     pending, return_when=asyncio.FIRST_COMPLETED
                 )
-                error: Exception | None = None
                 for task in done:
-                    try:
+                    exc = task.exception()
+                    if exc is not None:
+                        if stream_error is None:
+                            stream_error = exc
+                    elif stream_error is None:
                         table = task.result()
-                    except Exception as exc:
-                        if error is None:
-                            error = exc
-                    else:
                         if table is not None and table.num_rows > 0:
                             writer.write_table(table)
+                        # Keep the worker pool full until we run out of chunks.
                         _schedule_next()
-                    finally:
-                        pbar.update(1)
-                if error is not None:
-                    _raise_exception(error)
-    except Exception:
-        for task in pending:
-            task.cancel()
-        if pending:
-            await asyncio.gather(*pending, return_exceptions=True)
-        raise
+                    pbar.update(1)
+                if stream_error is not None:
+                    break
+    except Exception as exc:
+        unexpected_error = exc
     finally:
+        if stream_error is not None or unexpected_error is not None:
+            for task in pending:
+                task.cancel()
+            if pending:
+                await asyncio.gather(*pending, return_exceptions=True)
         writer.close()
+
+    if unexpected_error is not None:
+        raise unexpected_error
+    if stream_error is not None:
+        raise stream_error
 
     total_rows = writer.total_rows
 

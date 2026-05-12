@@ -170,16 +170,23 @@ class TestProcessYear:
             years=[2024],
             bounds=(530_000, 180_000, 550_000, 200_000),
             output_path=str(tmp_path),
+            max_workers=2,
         )
         index = MagicMock()
         calls = 0
+        cancelled = 0
 
         async def _fail_then_wait(*_args, **_kwargs):
-            nonlocal calls
+            nonlocal calls, cancelled
             calls += 1
             if calls == 1:
                 raise RuntimeError("chunk failed")
-            await asyncio.sleep(1)
+            try:
+                # Wait forever so this task only exits via cancellation.
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                cancelled += 1
+                raise
             return None
 
         writer = MagicMock()
@@ -192,6 +199,8 @@ class TestProcessYear:
             await process_year(config, 2024, index)
 
         writer.close.assert_called_once()
+        assert calls == config.max_workers
+        assert cancelled >= 1
 
 
 @pytest.mark.unit
