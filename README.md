@@ -7,11 +7,17 @@ Reproject [Alpha Earth Foundation embeddings](https://deepmind.google/blog/alpha
 </p>
 <p align="center"><em>Alpha Earth embeddings for London, UK (2025).</a></em></p>
 
-## Why
+## Why?
 
-Google Deepmind publishes the AEF embeddings dataset as an annual, global, 10m-resolution embedding layers as multiband Cloud Optimised GeoTIFFs. These are available via Google Cloud Storage or [Source Cooperative](https://source.coop/repositories/tge-labs/aef); this project solely uses the latter.
+Google Deepmind publishes the AEF embeddings dataset as an annual, global, 10m-resolution
+embedding layers as multiband Cloud Optimised GeoTIFFs. These are available via Google Cloud
+Storage or [Source Cooperative](https://source.coop/repositories/tge-labs/aef); this project solely
+uses the latter.
 
-Other projects exist for creating virtual Zarr files on-the-fly ([`aef-loader`](https://github.com/jakenotjay/aef-loader)) or premade mosaics ([`aef-mosaic`](https://source.coop/tge-labs/aef-mosaic)). These are amazing and I would strongly recommend using them in the first instance, particularly for raster-based workflows.
+Other projects exist for creating virtual Zarr files on-the-fly
+([`aef-loader`](https://github.com/jakenotjay/aef-loader)) or premade mosaics
+([`aef-mosaic`](https://source.coop/tge-labs/aef-mosaic)). These are amazing and I would strongly
+recommend using them in the first instance, particularly for raster-based workflows.
 
 I regularly use Databricks which _currently_ does not support native raster workflows, whereas they do have great native support for vector processing. My work also primarily covers Great Britain, so I wanted something indexed to the British National Grid. As such, I needed a simple way to work with Alpha Earth embeddings in a tabular format locally (via GeoParquet) or on Databricks (via Delta).
 
@@ -44,6 +50,36 @@ This work is currently a proof-of-concept to serve specific niche use case in ge
           v
         Output
 ```
+### Spark/Databricks
+
+Distributes chunk processing across a Spark cluster using `mapInArrow`:
+
+1. The tile index is loaded on the driver, pickled, and captured in the UDF closure
+2. A DataFrame of `(chunk, year)` combinations is repartitioned (~3 chunks per partition)
+3. Each partition runs a **single asyncio event loop** for all S3 reads
+4. Results are written to a Unity Catalog Delta table with `optimizeWrite` and `autoCompact`
+
+Compatible with dedicated job clusters, all-purpose compute, serverless, and Databricks Connect (no `sparkContext` dependency).
+
+Apply liquid clustering after processing for spatial/temporal query performance:
+
+```sql
+ALTER TABLE `catalog`.schema.table CLUSTER BY (year, bng_ref)
+```
+
+### Local
+
+Two-phase write strategy using [`geoparquet-io`](https://github.com/cholmes/geoparquet-io):
+
+1. **Stream**: PyArrow `ParquetWriter` appends chunks to a raw temp file with O(row_group)
+memory (~8 MB) to prevent data accumlation in RAM.
+2. **Optimise**: `gpio` CLI sorts and partitions:
+   - Hilbert curve spatial sorting for optimal row locality within files
+   - KD-tree spatial partitioning for uniform distribution across files targeting ~15M rows/file
+   (~1 GB). Partition count is the nearest power of 2: e.g. 195M rows → 16 files × 12.2M rows each.
+   - GeoParquet 2.0 with `geo_bbox` row group statistics enabling spatial filter pushdown
+   - 100k row groups
+   - Zstd compression
 
 ### Tile index
 
@@ -90,7 +126,7 @@ Liquid clustering on `(year, bng_ref)` is applied for temporal and spatial queri
 
 ### Processing units
 
-The pipeline divides Great Britain into 10km BNG grid squares (e.g. `TQ38`). Each square is 1000x1000 pixels at 10m resolution — up to 1M rows per chunk. These are internal processing units and do not appear in the output.
+The pipeline divides Great Britain into 10km BNG grid squares (e.g. `TQ38`). Each square is 1000x1000 pixels at 10m resolution, up to 1M rows per chunk. These are internal processing units and do not appear in the output.
 
 ## Installation
 
@@ -108,6 +144,12 @@ If you only want to install the required dependencies:
 uv sync
 ```
 
+For the Spark & Databrick-Connect dependency:
+
+```bash
+uv sync --extra spark
+```
+
 For the CLI command to generate visualisations of partitioned data:
 
 ```bash
@@ -118,13 +160,37 @@ uv sync --extra viz
 
 ### Databricks
 
-See [`notebooks/aef_bng_databricks.ipynb`](https://github.com/jordanp-dluhc/aef-bng/blob/main/notebooks/aef_bng_databricks.ipynb) for a walkthrough covering installation, configuration, running the pipeline, verification, and query examples.
+#### Interactive (notebook)
 
-This still needs implementing fully so is currently a general proof-of-concept workflow.
+See [`notebooks/aef_bng_databricks.ipynb`](https://github.com/jordanp-dluhc/aef-bng/blob/main/notebooks/aef_bng_databricks.ipynb) for a walkthrough. Install the package on your cluster and call `process_with_spark(config)` directly.
 
-You could potentially execute this using [`databricks-connect`](https://pypi.org/project/databricks-connect/) and the [Databricks VS Code extension](https://docs.databricks.com/aws/en/dev-tools/vscode-ext/) for running code locally via a Databricks cluster.
+#### Automated (Databricks Asset Bundle)
+
+Two DAB templates are provided — copy one to `databricks.yml` and fill in your workspace/catalog details:
+
+| Template | Compute | Startup time | Spark config |
+|----------|---------|--------------|--------------|
+| `databricks.template.cluster.yml` | Dedicated job cluster | ~5-10 minutes | Full control |
+| `databricks.template.serverless.yml` | Serverless | Instant | Fixed by runtime |
+
+```bash
+# Setup
+cp databricks.template.serverless.yml databricks.yml  # or cluster variant
+# Edit: workspace URL, catalog, schema, node type
+
+# Deploy and run
+databricks bundle deploy -t dev
+databricks bundle run aef_bng_pipeline -t dev \
+    --params bounds=508848,163362,553002,196746 \
+    --params years=2024,2025 \
+    --params "table_name=`your-catalog`.schema.table"
+```
+
+The DAB builds the wheel automatically (`uv build --wheel`), uploads it, and runs the job with the specified parameters.
 
 ### CLI (local mode)
+
+Largely for quick development work.
 
 See [`notebooks/aef_bng_local_example.ipynb`](https://github.com/jordanp-dluhc/aef-bng/blob/main/notebooks/aef_bng_local_example.ipynb).
 
@@ -146,10 +212,6 @@ aef-bng process \
     --workers 8 \
     --output ./london_aef
 ```
-
-The pipeline streams chunks to disk as they are processed (O(row_group) memory), then optimises the output with Hilbert sorting and KD-tree partitioning via `geoparquet-io`.
-
-It also uses `asyncio` under the hood for processing individual 10km chunks.
 
 ### Visualising output
 
@@ -214,22 +276,22 @@ uv run nox
 
 ```
 aef_bng/
-  cli.py          Click CLI entry point
+  cli.py          Click CLI entry point (process, visualise)
+  spark_cli.py    Hidden spark-run command (called by DAB python_wheel_task)
   config.py       Configuration dataclass with validation
   constants.py    AEF and BNG constants (nodata, CRS, resolution, S3 paths)
-  dequantise.py   int8 -> float32 dequantisation (numpy, Arrow, pandas)
+  dequantise.py   int8 -> float32 dequantisation (numpy, Arrow, pandas, PySpark)
   extract.py      Vectorised BNG reference generation, WKB geometry, Arrow table extraction
   grid.py         BNG output grid enumeration and ChunkSpec
   index.py        AEF STAC GeoParquet index (direct S3 query with predicate pushdown)
   pipeline.py     Local async pipeline orchestration (stream + optimise)
   reader.py       Async COG reading via obstore + async-geotiff
   reproject.py    UTM -> BNG reprojection and first-valid tile merging
-  spark.py        Distributed Spark pipeline (mapInArrow + Unity Catalog)
+  spark.py        Distributed Spark pipeline (mapInArrow, serverless/cluster compatible)
   types.py        BoundingBox with CRS reprojection
   visualise.py    Spatial partitioning visualiser (static PNG + lonboard HTML map)
   writer.py       Streaming writer + gpio optimization (Hilbert sort, KD-tree, GeoParquet 2.0)
+
+databricks.template.cluster.yml      DAB template — dedicated job cluster
+databricks.template.serverless.yml   DAB template — serverless compute
 ```
-
-## Further documentation
-
-- [Spark pipeline](docs/spark-pipeline.md) — How `mapInArrow` distributes chunk processing, writes to Unity Catalog, and cluster tuning recommendations (GDAL threading, `spark.task.cpu`).

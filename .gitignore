@@ -208,3 +208,6 @@ frontend/django_extensions
 *.tfw
 *.jar
 *.ds_store
+
+.databricks
+databricks.yml

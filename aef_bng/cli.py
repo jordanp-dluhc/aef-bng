@@ -126,5 +126,38 @@ def visualise(directory: str, png_path: str, html_path: str) -> None:
     click.secho(f"HTML -> {html_path}", fg="green")
 
 
+@main.command(name="spark-run", hidden=True)
+@click.option("--bounds", required=True)
+@click.option("--years", required=True)
+@click.option("--table-name", required=True)
+@click.option("--resampling", default="nearest")
+def spark_run(bounds: str, years: str, table_name: str, resampling: str) -> None:
+    """Execute pipeline on-cluster (called by python_wheel_task)."""
+    config = AEFBNGConfig(
+        years=[int(y) for y in years.strip().strip(",").split(",")],
+        bounds=tuple(int(b) for b in bounds.strip().strip(",").split(",")),  # type: ignore[arg-type]
+        table_name=table_name,
+        resampling=resampling,
+    )
+
+    from aef_bng.spark import process_with_spark
+
+    process_with_spark(config)
+
+
+def entrypoint() -> None:
+    """Entry point for console script.
+
+    Catches SystemExit(0) for Databricks python_wheel_task compatibility —
+    Databricks treats any SystemExit as a task failure, but Click calls
+    sys.exit(0) on success.
+    """
+    try:
+        main()
+    except SystemExit as e:
+        if e.code != 0:
+            raise
+
+
 if __name__ == "__main__":
     main()

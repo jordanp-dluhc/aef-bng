@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
+from pyspark.sql import functions as F
 
 from aef_bng.constants import AEF_BAND_NAMES, AEF_NODATA
 
@@ -84,4 +85,18 @@ def dequantise_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     for name in AEF_BAND_NAMES:
         if name in df.columns:
             df[name] = dequantise(df[name].to_numpy())
+    return df
+
+
+def dequantise_spark(df):
+    """Dequantise all 64 band columns (A00..A63) in a PySpark DataFrame.
+
+    Maps int8 [-127, 127] → float [-1, 1] using:
+        (value / 127.5)² x sign(value)
+    Nodata (-128) becomes null.
+    """
+    for name in AEF_BAND_NAMES:
+        col = F.col(name)
+        dequantised = F.pow(col / 127.5, 2) * F.signum(col)
+        df = df.withColumn(name, F.when(col != AEF_NODATA, dequantised))
     return df

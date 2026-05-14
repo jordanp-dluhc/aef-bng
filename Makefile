@@ -16,7 +16,7 @@ UNDERLINE := \033[4m
 # ==================================================================================== #
 # MAKEFILE TARGETS
 # ==================================================================================== #
-.PHONY: install check test nox clean
+.PHONY: install check test nox clean build
 
 install: ## install all group dependencies and install the pre-commit hooks
 	@echo "$(PURPLE)--- Installing Environment ---$(ENDC)"
@@ -33,7 +33,7 @@ check: ## run code quality tools
 	@echo "$(BLUE) > Checking lock file consistency...$(ENDC)"
 	@uv lock --locked
 	@echo "$(BLUE) > Running pre-commit checks...$(ENDC)"
-	@uvx pre-commit run -a
+	@uv run pre-commit run -a
 	@echo "$(GREEN)All checks passed!$(ENDC)"
 
 test: ## test the code with pytest
@@ -48,7 +48,6 @@ nox: ## run nox session
 	@uv run nox
 	@echo "$(GREEN)All nox checks finishe!$(ENDC)"
 
-# Clean
 clean:
 	rm -rf .nox .pytest_cache .ruff_cache __pycache__ dist
 	find . -type d -name __pycache__ -not -path "./.venv/*" -exec rm -rf {} +
