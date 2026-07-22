@@ -26,9 +26,10 @@ jobs:
 
       - run: uv run mkdocs build
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: site/
+          overwrite: true
 
       - id: deployment
         uses: actions/deploy-pages@v4
