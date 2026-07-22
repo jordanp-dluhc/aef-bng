@@ -4,7 +4,7 @@ Reproject AlphaEarth Foundation (AEF) satellite embeddings to British National G
 
 <figure markdown="span">
     ![London example](assets/london-rgb-pca-composite.jpg)
-    <figcaption>AlphaEarth embeddings for London, UK (2025). Copyright [Bluesky International Ltd](https://bluesky-world.com/).</figcaption>
+    <figcaption>AlphaEarth embeddings for London, UK (2025). Copyright Google and Google DeepMind (CC-BY 4.0).</figcaption>
   </figure>
 
 ## What is aef-bng?
