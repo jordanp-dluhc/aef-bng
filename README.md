@@ -1,3 +1,9 @@
+<div style="padding: 15px; border-radius: 4px;">
+    <strong>⚠️ IMPORTANT</strong>
+</div>
+
+> This repository has been archived. Development continues at [communitiesuk/aef-bng](https://github.com/communitiesuk/aef-bng).
+
 # aef-bng
 
 Reproject [AlphaEarth Foundation](https://deepmind.google/blog/alphaearth-foundations-helps-map-our-planet-in-unprecedented-detail/) satellite embeddings to the British National Grid (EPSG:27700) on Databricks.
