@@ -1,10 +1,15 @@
 # aef-bng
 
-Reproject Alpha Earth Foundation (AEF) satellite embeddings to British National Grid on Databricks.
+Reproject AlphaEarth Foundation (AEF) satellite embeddings to British National Grid on Databricks.
+
+<figure markdown="span">
+    ![London example](assets/london-rgb-pca-composite.jpg)
+    <figcaption>AlphaEarth embeddings for London, UK (2025). Copyright [Bluesky International Ltd](https://bluesky-world.com/).</figcaption>
+  </figure>
 
 ## What is aef-bng?
 
-`aef-bng` takes Google DeepMind's [Alpha Earth Foundation](https://deepmind.google/models-and-capabilities/alpha-earth/) 10m-resolution satellite embeddings (stored as Cloud Optimised GeoTIFFs in UTM projection) and reprojects them to the British National Grid (EPSG:27700).
+`aef-bng` takes Google DeepMind's [AlphaEarth Foundation](https://deepmind.google/models-and-capabilities/alpha-earth/) 10m-resolution satellite embeddings (stored as Cloud Optimised GeoTIFFs in UTM projection) and reprojects them to the British National Grid (EPSG:27700).
 
 The output is a Delta table on Databricks with 64 embedding bands per 10m pixel, ready for downstream ML tasks.
 

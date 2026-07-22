@@ -23,3 +23,14 @@ aef-bng spark-run \
   --years "2025" \
   --table-name "catalog.schema.aef_embeddings_bng"
 ```
+
+## Databricks Asset Bundle
+
+Amend one of the DAB bundles in the repo and run:
+
+```bash
+databricks bundle run aef_bng_pipeline -t dev \
+    --params bounds=520830,170402,542137,187507 \
+    --params years=2024,2025 \
+    --params table_name=catalog.data.aef_embeddings_bng
+```

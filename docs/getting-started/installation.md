@@ -8,6 +8,13 @@ cd aef-bng
 uv sync --group dev
 ```
 
+## From Git (Databricks)
+
+```bash
+%pip install git+https://github.com/communitiesuk/aef-bng.git
+dbutils.library.restartPython()
+```
+
 ## From Wheel (Databricks)
 
 ```bash
@@ -23,6 +30,6 @@ dbutils.library.restartPython()
 
 ## Extras
 
-| Extra | Use case |
-|-------|----------|
-| `[spark]` | Databricks Connect for distributed processing |
+|   Extra   |                                      Use case                                      |
+|-----------|------------------------------------------------------------------------------------|
+| `[spark]` | Databricks Connect using a local machine connecting to a remote Databricks cluster |

@@ -1,5 +1,5 @@
 site_name: aef-bng
-site_description: Reproject Alpha Earth Foundation embeddings to British National Grid on Databricks.
+site_description: Reproject AlphaEarth Foundation embeddings to British National Grid on Databricks.
 site_url: https://communitiesuk.github.io/aef-bng
 repo_url: https://github.com/communitiesuk/aef-bng
 repo_name: communitiesuk/aef-bng
@@ -30,7 +30,10 @@ nav:
   - Getting Started:
       - Installation: getting-started/installation.md
       - Quick Start: getting-started/quickstart.md
-  - Workflow: workflow.md
+  - Workflow:
+      - Notebook: workflow/notebook.md
+      - CLI: workflow/cli.md
+      - Asset Bundle (DAB): workflow/dab.md
   - API Reference:
       - api/index.md
       - Config: api/config.md
