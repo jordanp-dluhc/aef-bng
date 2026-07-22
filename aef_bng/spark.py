@@ -307,9 +307,9 @@ def _build_chunks_dataframe(
 def process_with_spark(config: AEFBNGConfig) -> None:
     """Run the AEF-BNG pipeline distributed across a Spark cluster.
 
-    Creates a DataFrame of chunk specs with flat columns, broadcasts the
+    Creates a DataFrame of chunk specs with flat columns, serialises the
     AEF index, and processes partitions in parallel using ``mapInArrow``.
-    Writes results to a Unity Catalog Delta table with liquid clustering.
+    Writes results to a Unity Catalog Delta table.
 
     Args:
         config: Pipeline configuration.

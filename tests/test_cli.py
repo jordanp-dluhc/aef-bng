@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, patch
-
 import pytest
 from click.testing import CliRunner
 
@@ -20,47 +18,20 @@ class TestCli:
         assert result.exit_code == 0
         assert "AEF embeddings" in result.output
 
-    def test_process_help(self) -> None:
-        """process --help lists all options."""
-        result = CliRunner().invoke(main, ["process", "--help"])
+    def test_spark_run_help(self) -> None:
+        """spark-run --help lists all options."""
+        result = CliRunner().invoke(main, ["spark-run", "--help"])
         assert result.exit_code == 0
-        assert "--year" in result.output
-        assert "--output" in result.output
         assert "--bounds" in result.output
+        assert "--years" in result.output
+        assert "--table-name" in result.output
 
-    def test_process_requires_year(self) -> None:
-        """process without --year exits with a non-zero code."""
-        result = CliRunner().invoke(main, ["process", "--output", "/tmp/out"])  # noqa: S108
+    def test_spark_run_requires_options(self) -> None:
+        """spark-run without required options exits with a non-zero code."""
+        result = CliRunner().invoke(main, ["spark-run"])
         assert result.exit_code != 0
 
-    def test_process_runs_pipeline_and_prints_rows(self, tmp_path) -> None:
-        """process invokes run_pipeline and prints per-year row counts."""
-        with patch("aef_bng.pipeline.run_pipeline", new_callable=AsyncMock) as mock:
-            mock.return_value = {2024: 1_000_000}
-            result = CliRunner().invoke(
-                main,
-                [
-                    "process",
-                    "--year",
-                    "2024",
-                    "--bounds",
-                    "530000",
-                    "180000",
-                    "540000",
-                    "190000",
-                    "--output",
-                    str(tmp_path),
-                ],
-            )
-        assert result.exit_code == 0
-        assert "1,000,000" in result.output
-
-    def test_verbose_flag_accepted(self, tmp_path) -> None:
+    def test_verbose_flag_accepted(self) -> None:
         """--verbose flag is accepted without error."""
-        with patch("aef_bng.pipeline.run_pipeline", new_callable=AsyncMock) as mock:
-            mock.return_value = {2024: 0}
-            result = CliRunner().invoke(
-                main,
-                ["--verbose", "process", "--year", "2024", "--output", str(tmp_path)],
-            )
+        result = CliRunner().invoke(main, ["--verbose", "--help"])
         assert result.exit_code == 0

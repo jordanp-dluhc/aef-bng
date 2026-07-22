@@ -16,7 +16,7 @@ UNDERLINE := \033[4m
 # ==================================================================================== #
 # MAKEFILE TARGETS
 # ==================================================================================== #
-.PHONY: install check test nox clean build
+.PHONY: install check test nox clean build serve-docs build-docs
 
 install: ## install all group dependencies and install the pre-commit hooks
 	@echo "$(PURPLE)--- Installing Environment ---$(ENDC)"
@@ -48,6 +48,20 @@ nox: ## run nox session
 	@uv run nox
 	@echo "$(GREEN)All nox checks finishe!$(ENDC)"
 
-clean:
-	rm -rf .nox .pytest_cache .ruff_cache __pycache__ dist
+clean: ## remove build artifacts and caches
+	rm -rf .nox .pytest_cache .ruff_cache __pycache__ dist site htmlcov
 	find . -type d -name __pycache__ -not -path "./.venv/*" -exec rm -rf {} +
+
+serve-docs: ## serve docs locally at localhost:8001
+	@echo "$(PURPLE)--- Serving Documentation ---$(ENDC)"
+	@uv run --group docs mkdocs serve -a localhost:8001
+
+build-docs: ## build static docs site to site/
+	@echo "$(PURPLE)--- Building Documentation ---$(ENDC)"
+	@uv run --group docs mkdocs build
+	@echo "$(GREEN)Docs built to site/$(ENDC)"
+
+build: ## build wheel to dist/
+	@echo "$(PURPLE)--- Building Wheel ---$(ENDC)"
+	@uv build --wheel --out-dir dist/
+	@echo "$(GREEN)Wheel built to dist/$(ENDC)"
