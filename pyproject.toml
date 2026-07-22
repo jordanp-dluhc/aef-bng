@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "AEF embeddings reprojected to British National Grid as GeoParquet or Delta Tables."
 authors = [{ name = "Jordan Pinder" }]
 readme = "README.md"
-license = { text = "MIT" }
+license = { text = "OGL-UK-3.0" }
 requires-python = "==3.12.*"
 dependencies = [
     "async-geotiff>=0.4.0",
@@ -16,6 +16,8 @@ dependencies = [
     "obstore>=0.4.0",
     "osbng>=0.5.0",
     "pyarrow>=15.0.0",
+    "pydantic-settings>=2.14.1",
+    "pydantic>=2.13.4",
     "pyproj>=3.6.0",
     "rasterio>=1.4.0",
     "tqdm>=4.60.0",
@@ -37,9 +39,7 @@ dev = [
 ]
 
 [project.optional-dependencies]
-spark = [
-    "databricks-connect==17.3",
-]
+spark = ["databricks-connect==18.2"]
 viz = ["contextily>=1.7.0", "lonboard>=0.10.0", "matplotlib>=3.10.8"]
 
 
@@ -49,6 +49,11 @@ aef-bng = "aef_bng.cli:entrypoint"
 
 [project.urls]
 Repository = "https://github.com/jordanp-dluhc/aef-bng"
+
+[tool.uv]
+managed = true
+exclude-newer = "2026-05-29T02:07:43Z"
+
 
 [build-system]
 requires = ["hatchling"]
