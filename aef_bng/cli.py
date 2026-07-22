@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import sys
 import time
@@ -11,7 +10,6 @@ from contextlib import contextmanager
 import click
 
 from aef_bng.config import AEFBNGConfig
-from aef_bng.constants import BNG_BOUNDS
 
 
 @contextmanager
@@ -42,91 +40,7 @@ def main(verbose: bool) -> None:
     )
 
 
-@main.command()
-@click.option(
-    "--year",
-    "-y",
-    "years",
-    type=int,
-    multiple=True,
-    required=True,
-    help="Year(s) to process.",
-)
-@click.option(
-    "--output",
-    "-o",
-    "output_path",
-    default="./aef_bng_output",
-    help="GeoParquet output directory.",
-)
-@click.option("--workers", "-w", type=int, default=4, help="Max concurrent workers.")
-@click.option(
-    "--bounds",
-    nargs=4,
-    type=int,
-    default=BNG_BOUNDS,
-    help="BNG bounds: minx miny maxx maxy.",
-)
-def process(
-    years: tuple[int, ...],
-    output_path: str,
-    workers: int,
-    bounds: tuple[int, int, int, int],
-) -> None:
-    """Process AEF embeddings to BNG GeoParquet files."""
-    config = AEFBNGConfig(
-        years=list(years),
-        bounds=bounds,
-        output_path=output_path,
-        max_workers=workers,
-    )
-
-    with stopwatch():
-        from aef_bng.pipeline import run_pipeline
-
-        results = asyncio.run(run_pipeline(config))
-
-    for year, rows in results.items():
-        click.echo(f"Year {year}: {rows:,} rows written")
-
-
-@main.command()
-@click.argument("directory", type=click.Path(exists=True, file_okay=False, resolve_path=True))
-@click.option(
-    "--png",
-    "png_path",
-    default="spatial_partitioning.png",
-    show_default=True,
-    help="Output path for the static PNG plot.",
-)
-@click.option(
-    "--html",
-    "html_path",
-    default="spatial_partitioning.html",
-    show_default=True,
-    help="Output path for the interactive HTML map.",
-)
-def visualise(directory: str, png_path: str, html_path: str) -> None:
-    """Visualise spatial partitioning of a GeoParquet dataset directory.
-
-    DIRECTORY should contain .parquet files, e.g. london_aef/2025.
-
-    Requires the viz extras:  uv sync --extra viz
-    """
-    from aef_bng.visualise import visualise as _visualise
-
-    try:
-        _visualise(directory, png_path=png_path, html_path=html_path)
-    except ImportError as e:
-        raise click.ClickException(str(e)) from e
-    except ValueError as e:
-        raise click.ClickException(str(e)) from e
-
-    click.secho(f"PNG  -> {png_path}", fg="green")
-    click.secho(f"HTML -> {html_path}", fg="green")
-
-
-@main.command(name="spark-run", hidden=True)
+@main.command(name="spark-run")
 @click.option("--bounds", required=True)
 @click.option("--years", required=True)
 @click.option("--table-name", required=True)
@@ -140,9 +54,10 @@ def spark_run(bounds: str, years: str, table_name: str, resampling: str) -> None
         resampling=resampling,
     )
 
-    from aef_bng.spark import process_with_spark
+    with stopwatch():
+        from aef_bng.spark import process_with_spark
 
-    process_with_spark(config)
+        process_with_spark(config)
 
 
 def entrypoint() -> None:
