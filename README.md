@@ -272,6 +272,15 @@ Or individually:
 uv run nox
 ```
 
+## Acknowledgements
+
+This project was inspired by and incorporates design patterns from
+[`aef-loader`](https://github.com/jakenotjay/aef-loader) by Jake Wilkins,
+licensed under the Apache License 2.0. See [NOTICE](NOTICE) for details.
+
+The [Alpha Earth Foundations](https://deepmind.google/blog/alphaearth-foundations-helps-map-our-planet-in-unprecedented-detail/)
+satellite embedding dataset is produced by Google and Google DeepMind (CC-BY 4.0).
+
 ## Architecture
 
 ```
