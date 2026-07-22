@@ -9,9 +9,7 @@ requires-python = "==3.12.*"
 dependencies = [
     "async-geotiff>=0.4.0",
     "click>=8.0",
-    "fsspec>=2026.3.0",
     "geopandas>=0.14.0",
-    "geoparquet-io>=1.0.1",
     "numpy>=1.24.0",
     "obstore>=0.4.0",
     "osbng>=0.5.0",
@@ -37,10 +35,15 @@ dev = [
     "ruff>=0.12.0",
     "uv-sort>=0.7.0",
 ]
+docs = [
+    "mkdocs-material==9.7.*",
+    "mkdocs==1.6.*",
+    "mkdocstrings[python]>=0.25,<1.0",
+]
 
 [project.optional-dependencies]
 spark = ["databricks-connect==18.2"]
-viz = ["contextily>=1.7.0", "lonboard>=0.10.0", "matplotlib>=3.10.8"]
+
 
 
 [project.scripts]
